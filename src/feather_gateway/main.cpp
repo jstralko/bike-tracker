@@ -1,5 +1,31 @@
-#include <Adafruit_GPS.h>
 #include <Arduino.h>
+
+// The ESP32-S3 TFT environment enables this main-board-only test.
+// Keep the original M0 gateway below disabled until wing wiring is verified.
+#ifndef FEATHER_MAIN_BOARD_TEST
+#define FEATHER_MAIN_BOARD_TEST 0
+#endif
+
+#if FEATHER_MAIN_BOARD_TEST
+void setup() {
+  Serial.begin(115200);
+  delay(1500);
+  Serial.println(F("Feather ESP32-S3 TFT bring-up: serial only"));
+  Serial.println(F("Setup complete"));
+}
+
+void loop() {
+  static uint32_t heartbeat = 0;
+  Serial.print(F("Heartbeat "));
+  Serial.print(heartbeat++);
+  Serial.print(F(" | uptime_ms="));
+  Serial.print(millis());
+  Serial.println(F(" | test=serial-only"));
+  delay(1000);
+}
+#else
+// Original Feather M0 gateway (excluded from the ESP32-S3 TFT test build).
+#include <Adafruit_GPS.h>
 #include <RadioLib.h>
 #include <SPI.h>
 
@@ -97,4 +123,4 @@ void loop() {
   }
   listen();
 }
-
+#endif  // FEATHER_MAIN_BOARD_TEST
