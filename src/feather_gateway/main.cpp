@@ -3,7 +3,7 @@
 // The ESP32-S3 TFT environment enables this main-board-only test.
 // Keep the original M0 gateway below disabled until wing wiring is verified.
 #ifndef FEATHER_MAIN_BOARD_TEST
-#define FEATHER_MAIN_BOARD_TEST 0
+#define FEATHER_MAIN_BOARD_TEST 1
 #endif
 
 #if FEATHER_MAIN_BOARD_TEST
