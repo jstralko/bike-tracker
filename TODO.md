@@ -46,9 +46,30 @@ If no logs appear, check the selected serial port (`pio device list`), the data 
 - [ ] Add packet addressing, acknowledgement checks, and bounded retries.
 - [ ] Test battery operation, then introduce sleep/wake behavior.
 
-## Feather ESP32-S3 TFT — main board only
+## Feather ESP32-S3 TFT — radio initialization
 
-The `feather_esp32s3_tft` environment sets `FEATHER_MAIN_BOARD_TEST=1`, excluding the original GPS/radio gateway code. No FeatherWings are needed. This first test uses USB serial only; the built-in TFT is not initialized yet.
+The Feather environment now defaults to `FEATHER_TEST_STAGE=1`: initialize an
+RFM95W/SX1276 at 915 MHz, enable CRC, and enter standby without transmitting.
+Set `FEATHER_TEST_STAGE=0` in `platformio.ini` to repeat the serial-only test.
+
+- [ ] Verify the radio is an RFM95W and confirm its soldered CS/RST/IRQ jumpers.
+      The proposed configuration is CS=GPIO10, RST=GPIO11, IRQ=GPIO6; change
+      `FEATHER_RADIO_*` build flags to match your actual wiring before upload.
+- [ ] Connect the FeatherWing SPI headers (SCK=36, MISO=37, MOSI=35), 3.3V,
+      and GND, and attach the 915 MHz antenna.
+- [ ] Build/upload `feather_esp32s3_tft`, then open its monitor.
+- [ ] Confirm `Radio ready at 915 MHz | mode=standby | no transmission` and
+      repeating `test=radio-init | radio=ready | code=0` heartbeats.
+- [ ] If initialization fails, record the code and check power and wiring.
+      Heartbeats continue reporting failure; no automatic retries are performed.
+
+This verifies SPI communication and radio configuration, not RF transmission,
+reception, or the IRQ wire. The later ping/pong test verifies those paths.
+The TFT chip select is held high because it shares the SPI bus.
+
+## Feather ESP32-S3 TFT — main board only (stage 0)
+
+The `feather_esp32s3_tft` environment sets `FEATHER_MAIN_BOARD_TEST=1`, excluding the original M0 gateway code. Set `FEATHER_TEST_STAGE=0` for this serial-only test. No FeatherWings are needed; the built-in TFT is not initialized yet.
 
 - [ ] Connect only the main Feather board with a USB data cable.
 - [ ] In VS Code, expand **PlatformIO → PROJECT TASKS → feather_esp32s3_tft → General**.

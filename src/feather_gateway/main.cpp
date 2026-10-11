@@ -7,10 +7,66 @@
 #endif
 
 #if FEATHER_MAIN_BOARD_TEST
+#include <RadioLib.h>
+#include <SPI.h>
+
+// Stage 0: serial only. Stage 1: initialize the RFM95W and enter standby.
+// Confirm these GPIOs match the FeatherWing's soldered jumpers before upload.
+#ifndef FEATHER_TEST_STAGE
+#define FEATHER_TEST_STAGE 1
+#endif
+#ifndef FEATHER_RADIO_CS
+#define FEATHER_RADIO_CS 10
+#endif
+#ifndef FEATHER_RADIO_RST
+#define FEATHER_RADIO_RST 11
+#endif
+#ifndef FEATHER_RADIO_IRQ
+#define FEATHER_RADIO_IRQ 6
+#endif
+#if FEATHER_TEST_STAGE < 0 || FEATHER_TEST_STAGE > 1
+#error "FEATHER_TEST_STAGE must be 0 (serial) or 1 (radio initialization)"
+#endif
+
+namespace {
+#if FEATHER_TEST_STAGE == 1
+SX1276 radio = new Module(FEATHER_RADIO_CS, FEATHER_RADIO_IRQ,
+                          FEATHER_RADIO_RST, RADIOLIB_NC);
+int16_t radioStatus = RADIOLIB_ERR_NONE;
+bool radioReady = false;
+
+void initializeRadio() {
+  // The built-in TFT shares SPI; keep its chip select inactive.
+  pinMode(TFT_CS, OUTPUT);
+  digitalWrite(TFT_CS, HIGH);
+  SPI.begin(SCK, MISO, MOSI);
+  Serial.printf("Radio pins: CS=%d RST=%d IRQ=%d | SCK=%d MISO=%d MOSI=%d\n",
+                FEATHER_RADIO_CS, FEATHER_RADIO_RST, FEATHER_RADIO_IRQ,
+                SCK, MISO, MOSI);
+  radioStatus = radio.begin(915.0, 125.0, 9, 7, 0x12, 17, 8);
+  if (radioStatus == RADIOLIB_ERR_NONE) radioStatus = radio.setCRC(true);
+  if (radioStatus == RADIOLIB_ERR_NONE) radioStatus = radio.standby();
+  radioReady = radioStatus == RADIOLIB_ERR_NONE;
+  if (radioReady) {
+    Serial.println(F("Radio ready at 915 MHz | mode=standby | no transmission"));
+  } else {
+    Serial.print(F("Radio initialization failed, RadioLib code "));
+    Serial.println(radioStatus);
+    if (radioStatus == RADIOLIB_ERR_CHIP_NOT_FOUND) {
+      Serial.println(F("Check RFM95W power, SPI connections, and CS/RST jumpers"));
+    }
+  }
+}
+#endif
+}  // namespace
+
 void setup() {
   Serial.begin(115200);
   delay(1500);
-  Serial.println(F("Feather ESP32-S3 TFT bring-up: serial only"));
+  Serial.println(F("Feather ESP32-S3 TFT bring-up"));
+#if FEATHER_TEST_STAGE == 1
+  initializeRadio();
+#endif
   Serial.println(F("Setup complete"));
 }
 
@@ -20,7 +76,14 @@ void loop() {
   Serial.print(heartbeat++);
   Serial.print(F(" | uptime_ms="));
   Serial.print(millis());
+#if FEATHER_TEST_STAGE == 1
+  Serial.print(F(" | test=radio-init | radio="));
+  Serial.print(radioReady ? F("ready") : F("failed"));
+  Serial.print(F(" | code="));
+  Serial.println(radioStatus);
+#else
   Serial.println(F(" | test=serial-only"));
+#endif
   delay(1000);
 }
 #else

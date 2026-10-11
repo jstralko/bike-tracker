@@ -33,7 +33,7 @@ If the base Feather is not a Feather M0, change the three `kRadio...` constants 
 
 ### Feather ESP32-S3 TFT main-board test
 
-For the Adafruit Feather ESP32-S3 TFT, use **`feather_esp32s3_tft`**, not `feather_m0`. This environment tests USB serial logging on the main board only, with GPS/radio code excluded and no TFT initialization yet. See [the Feather checklist](TODO.md#feather-esp32-s3-tft--main-board-only).
+For the Adafruit Feather ESP32-S3 TFT, use **`feather_esp32s3_tft`**, not `feather_m0`. This environment now initializes the RFM95W radio at 915 MHz and leaves it in standby without transmitting. GPS and ping/pong remain excluded. Confirm the radio jumpers match `FEATHER_RADIO_CS=10`, `FEATHER_RADIO_RST=11`, and `FEATHER_RADIO_IRQ=6` in `platformio.ini` before uploading. See [the Feather checklist](TODO.md#feather-esp32-s3-tft--radio-initialization).
 
 In VS Code, select **PlatformIO → PROJECT TASKS → feather_esp32s3_tft → General → Upload and Monitor**. Or run:
 
@@ -45,9 +45,13 @@ pio device monitor -e feather_esp32s3_tft
 Expected repeating output at 115200 baud:
 
 ```text
-Heartbeat 0 | uptime_ms=1500 | test=serial-only
-Heartbeat 1 | uptime_ms=2500 | test=serial-only
+Heartbeat 0 | uptime_ms=1500 | test=radio-init | radio=ready | code=0
+Heartbeat 1 | uptime_ms=2500 | test=radio-init | radio=ready | code=0
 ```
+
+Initialization success checks SPI communication and configuration; the later
+ping/pong test is still needed to verify RF and interrupt handling. To return
+to the previous serial-only test, set `FEATHER_TEST_STAGE=0` in `platformio.ini`.
 
 ### T-Beam and original Feather M0 gateway
 
