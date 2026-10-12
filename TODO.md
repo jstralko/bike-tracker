@@ -2,9 +2,9 @@
 
 For the Feather ESP32-S3 TFT main board, use the separate checklist below. The `feather_m0` environment is the original gateway and is not the correct upload target for your ESP32-S3.
 
-Change `TBEAM_TEST_STAGE` near the top of `src/tbeam_supreme/main.cpp`, then rebuild and upload after each change. Inactive hardware code is excluded by `#if` blocks, preserving it for later tests. Start with stage **0**.
+Change `TBEAM_TEST_STAGE` near the top of `src/tbeam_supreme/main.cpp`, then rebuild and upload after each change. Inactive hardware code is excluded by `#if` blocks, preserving it for later tests. The current default is stage **3** after successful power and radio bring-up.
 
-## 0 — Serial logging only (default)
+## 0 — Serial logging only
 
 - [X] Connect the T-Beam with a USB data cable.
 - [X] Build: `pio run -e tbeam_supreme`.
@@ -32,7 +32,7 @@ If no logs appear, check the selected serial port (`pio device list`), the data 
 ## 3 — Ping/pong link
 
 - [ ] Confirm the configured frequency is permitted in your location and antennas are attached to both boards.
-- [ ] Build/upload the Feather gateway using `pio run -e feather_m0 -t upload`.
+- [ ] Build/upload the Feather gateway using `pio run -e feather_esp32s3_tft -t upload`.
 - [ ] Set the T-Beam stage to `3`, rebuild, and upload.
 - [ ] Confirm increasing `TX  PING:n` messages. With no gateway, `RX  timeout` is expected.
 - [ ] With the gateway running, confirm matching `RX  PONG:n` messages and RSSI/SNR values.
@@ -46,9 +46,24 @@ If no logs appear, check the selected serial port (`pio device list`), the data 
 - [ ] Add packet addressing, acknowledgement checks, and bounded retries.
 - [ ] Test battery operation, then introduce sleep/wake behavior.
 
+## Feather ESP32-S3 TFT — ping/pong (default stage 2)
+
+- [x] Verify radio initialization reports `radio=ready | code=0` after header
+      repairs and the RST→GPIO11 bypass.
+- [ ] Attach antennas to both boards and upload both current environments.
+- [ ] Confirm Feather logs `Listening at 915 MHz | test=ping-pong`.
+- [ ] Confirm Feather logs `RX  PING:n` and `TX  PONG:n`.
+- [ ] Confirm T-Beam logs the matching reply and increasing `PONG matched` count.
+- [ ] Power off the Feather and confirm T-Beam timeouts; power it on and confirm
+      successful replies resume without resetting the T-Beam.
+- [ ] Leave both running and confirm replies keep matching during the field test.
+
+This test uses radio only; GPS parsing and TFT rendering remain disabled.
+The Feather stage is selected in `platformio.ini`; T-Beam defaults to stage 3.
+
 ## Feather ESP32-S3 TFT — radio initialization
 
-The Feather environment now defaults to `FEATHER_TEST_STAGE=1`: initialize an
+Use `FEATHER_TEST_STAGE=1` to repeat initialization: initialize an
 RFM95W/SX1276 at 915 MHz, enable CRC, and enter standby without transmitting.
 Set `FEATHER_TEST_STAGE=0` in `platformio.ini` to repeat the serial-only test.
 

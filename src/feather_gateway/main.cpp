@@ -1,7 +1,6 @@
 #include <Arduino.h>
 
-// The ESP32-S3 TFT environment enables this main-board-only test.
-// Keep the original M0 gateway below disabled until wing wiring is verified.
+// ESP32-S3 bring-up stages; the legacy M0 gateway is kept below.
 #ifndef FEATHER_MAIN_BOARD_TEST
 #define FEATHER_MAIN_BOARD_TEST 1
 #endif
@@ -10,10 +9,10 @@
 #include <RadioLib.h>
 #include <SPI.h>
 
-// Stage 0: serial only. Stage 1: initialize the RFM95W and enter standby.
+// Stage 0: serial only. Stage 1: radio standby. Stage 2: ping/pong gateway.
 // Confirm these GPIOs match the FeatherWing's soldered jumpers before upload.
 #ifndef FEATHER_TEST_STAGE
-#define FEATHER_TEST_STAGE 1
+#define FEATHER_TEST_STAGE 2
 #endif
 #ifndef FEATHER_RADIO_CS
 #define FEATHER_RADIO_CS 10
@@ -24,16 +23,61 @@
 #ifndef FEATHER_RADIO_IRQ
 #define FEATHER_RADIO_IRQ 6
 #endif
-#if FEATHER_TEST_STAGE < 0 || FEATHER_TEST_STAGE > 1
-#error "FEATHER_TEST_STAGE must be 0 (serial) or 1 (radio initialization)"
+#if FEATHER_TEST_STAGE < 0 || FEATHER_TEST_STAGE > 2
+#error "FEATHER_TEST_STAGE must be 0 (serial), 1 (radio init), or 2 (ping/pong)"
 #endif
 
 namespace {
-#if FEATHER_TEST_STAGE == 1
+#if FEATHER_TEST_STAGE >= 1
 SX1276 radio = new Module(FEATHER_RADIO_CS, FEATHER_RADIO_IRQ,
                           FEATHER_RADIO_RST, RADIOLIB_NC);
 int16_t radioStatus = RADIOLIB_ERR_NONE;
 bool radioReady = false;
+#if FEATHER_TEST_STAGE == 2
+volatile bool packetReceived = false;
+uint32_t pongsSent = 0;
+
+void ARDUINO_ISR_ATTR onPacketReceived() { packetReceived = true; }
+
+void listen() {
+  packetReceived = false;
+  radioStatus = radio.startReceive();
+  radioReady = radioStatus == RADIOLIB_ERR_NONE;
+  if (!radioReady) Serial.printf("Start receive failed, code %d\n", radioStatus);
+}
+
+void pollRadio() {
+  if (!radioReady || !packetReceived) return;
+  packetReceived = false;
+  String message;
+  int16_t state = radio.readData(message);
+  if (state == RADIOLIB_ERR_NONE) {
+    Serial.printf("RX  %s  RSSI=%.2f dBm  SNR=%.2f dB\n",
+                  message.c_str(), radio.getRSSI(), radio.getSNR());
+    bool validPing = message.startsWith("PING:") && message.length() > 5;
+    for (unsigned int i = 5; validPing && i < message.length(); ++i) {
+      validPing = message[i] >= '0' && message[i] <= '9';
+    }
+    if (validPing) {
+      String pong = "PONG:" + message.substring(5);
+      delay(50);  // Give the T-Beam time to switch from TX to RX.
+      state = radio.transmit(pong);
+      if (state == RADIOLIB_ERR_NONE) {
+        ++pongsSent;
+        Serial.printf("TX  %s | pongs=%lu\n", pong.c_str(),
+                      static_cast<unsigned long>(pongsSent));
+      } else {
+        Serial.printf("TX failed, code %d\n", state);
+      }
+    } else {
+      Serial.println(F("Ignoring packet: expected PING:<sequence>"));
+    }
+  } else {
+    Serial.printf("RX read failed, code %d\n", state);
+  }
+  listen();
+}
+#endif
 
 void initializeRadio() {
   // The built-in TFT shares SPI; keep its chip select inactive.
@@ -48,7 +92,13 @@ void initializeRadio() {
   if (radioStatus == RADIOLIB_ERR_NONE) radioStatus = radio.standby();
   radioReady = radioStatus == RADIOLIB_ERR_NONE;
   if (radioReady) {
+#if FEATHER_TEST_STAGE == 2
+    radio.setPacketReceivedAction(onPacketReceived);
+    listen();
+    if (radioReady) Serial.println(F("Listening at 915 MHz | test=ping-pong"));
+#else
     Serial.println(F("Radio ready at 915 MHz | mode=standby | no transmission"));
+#endif
   } else {
     Serial.print(F("Radio initialization failed, RadioLib code "));
     Serial.println(radioStatus);
@@ -64,27 +114,42 @@ void setup() {
   Serial.begin(115200);
   delay(1500);
   Serial.println(F("Feather ESP32-S3 TFT bring-up"));
-#if FEATHER_TEST_STAGE == 1
+#if FEATHER_TEST_STAGE >= 1
   initializeRadio();
 #endif
   Serial.println(F("Setup complete"));
 }
 
 void loop() {
+#if FEATHER_TEST_STAGE == 2
+  pollRadio();
+  static uint32_t lastHeartbeat = 0;
+  if (millis() - lastHeartbeat < 1000) {
+    delay(1);
+    return;
+  }
+  lastHeartbeat = millis();
+#endif
   static uint32_t heartbeat = 0;
   Serial.print(F("Heartbeat "));
   Serial.print(heartbeat++);
   Serial.print(F(" | uptime_ms="));
   Serial.print(millis());
-#if FEATHER_TEST_STAGE == 1
+#if FEATHER_TEST_STAGE >= 1
+#if FEATHER_TEST_STAGE == 2
+  Serial.print(F(" | test=ping-pong | radio="));
+#else
   Serial.print(F(" | test=radio-init | radio="));
+#endif
   Serial.print(radioReady ? F("ready") : F("failed"));
   Serial.print(F(" | code="));
   Serial.println(radioStatus);
 #else
   Serial.println(F(" | test=serial-only"));
 #endif
+#if FEATHER_TEST_STAGE != 2
   delay(1000);
+#endif
 }
 #else
 // Original Feather M0 gateway (excluded from the ESP32-S3 TFT test build).

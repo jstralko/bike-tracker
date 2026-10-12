@@ -7,7 +7,7 @@ Minimal Arduino/PlatformIO firmware proving a two-way 915 MHz LoRa link between:
 
 The Feather also prints its current GPS fix when a ping arrives. GPS is deliberately not included in the radio packet yet, so radio bring-up still works indoors or before a fix is available.
 
-The T-Beam currently defaults to **serial-only bring-up**: it prints a heartbeat every second, with PMU and radio code disabled by preprocessor blocks. Follow [the bring-up checklist](TODO.md) and increase `TBEAM_TEST_STAGE` in `src/tbeam_supreme/main.cpp` from `0` through `3` to enable power, radio initialization, and finally ping/pong.
+The T-Beam now defaults to **stage 3, ping/pong**. Earlier serial, PMU, and radio initialization stages remain available; see [the bring-up checklist](TODO.md).
 
 ## Important
 
@@ -31,27 +31,52 @@ If the base Feather is not a Feather M0, change the three `kRadio...` constants 
 
 ## Build and upload
 
-### Feather ESP32-S3 TFT main-board test
+### Feather ESP32-S3 TFT ping/pong gateway
 
-For the Adafruit Feather ESP32-S3 TFT, use **`feather_esp32s3_tft`**, not `feather_m0`. This environment now initializes the RFM95W radio at 915 MHz and leaves it in standby without transmitting. GPS and ping/pong remain excluded. Confirm the radio jumpers match `FEATHER_RADIO_CS=10`, `FEATHER_RADIO_RST=11`, and `FEATHER_RADIO_IRQ=6` in `platformio.ini` before uploading. See [the Feather checklist](TODO.md#feather-esp32-s3-tft--radio-initialization).
+Use **`feather_esp32s3_tft`** for the Feather and **`tbeam_supreme`** for
+the T-Beam. The default stages now enable ping/pong on both boards. The
+Feather's verified wiring is CS→B/GPIO10, IRQ→D/GPIO6, and radio RST→GPIO11
+through the repaired bypass. GPS and TFT rendering are not enabled.
 
-In VS Code, select **PlatformIO → PROJECT TASKS → feather_esp32s3_tft → General → Upload and Monitor**. Or run:
+Attach both 915 MHz antennas, close the target board's monitor, and upload:
 
 ```sh
 pio run -e feather_esp32s3_tft -t upload
-pio device monitor -e feather_esp32s3_tft
+pio run -e tbeam_supreme -t upload
 ```
 
-Expected repeating output at 115200 baud:
+Open each monitor in a separate terminal:
+
+```sh
+pio device monitor -e feather_esp32s3_tft
+pio device monitor -e tbeam_supreme
+```
+
+Expected Feather output:
 
 ```text
-Heartbeat 0 | uptime_ms=1500 | test=radio-init | radio=ready | code=0
-Heartbeat 1 | uptime_ms=2500 | test=radio-init | radio=ready | code=0
+Listening at 915 MHz | test=ping-pong
+RX  PING:0  RSSI=-45.00 dBm  SNR=9.50 dB
+TX  PONG:0 | pongs=1
 ```
 
-Initialization success checks SPI communication and configuration; the later
-ping/pong test is still needed to verify RF and interrupt handling. To return
-to the previous serial-only test, set `FEATHER_TEST_STAGE=0` in `platformio.ini`.
+Expected T-Beam output:
+
+```text
+TX  PING:0
+RX  PONG:0  RSSI=-45.00 dBm  SNR=9.50 dB
+PONG matched | matched=1
+```
+
+Signal measurements vary. With the gateway off, the T-Beam reports
+`RX  timeout` and keeps trying. The Feather also prints a heartbeat every
+second. If initialization or reception setup fails, its heartbeat reports
+`radio=failed` and the RadioLib code. Invalid packets do not receive a pong;
+RX/TX failures are logged and the Feather attempts to resume listening.
+
+To repeat earlier tests, set `FEATHER_TEST_STAGE=0` (serial) or `1` (radio
+standby) in `platformio.ini`, and `TBEAM_TEST_STAGE=0`, `1`, or `2` in the
+T-Beam source. See [the checklist](TODO.md).
 
 ### T-Beam and original Feather M0 gateway
 

@@ -3,7 +3,7 @@
 // Start at 0 and increase one stage at a time; see TODO.md.
 // 0 = serial only, 1 = PMU power, 2 = radio init, 3 = ping/pong.
 // The preprocessor comments out hardware code for the inactive stages.
-#define TBEAM_TEST_STAGE 2
+#define TBEAM_TEST_STAGE 3
 
 #if TBEAM_TEST_STAGE < 0 || TBEAM_TEST_STAGE > 3
 #error "TBEAM_TEST_STAGE must be between 0 and 3"
@@ -51,7 +51,7 @@ SX1262 radio = new Module(kRadioCs, kRadioDio1, kRadioReset, kRadioBusy, radioSp
 volatile bool packetReceived = false;
 uint32_t sequence = 0;
 
-void onPacketReceived() {
+void ARDUINO_ISR_ATTR onPacketReceived() {
   packetReceived = true;
 }
 #endif
@@ -97,6 +97,8 @@ void setup() {
                               kSpreadingFactor, kCodingRate, kSyncWord,
                               kTxPowerDbm, kPreambleLength);
   if (state != RADIOLIB_ERR_NONE) stopWithError(F("Radio init"), state);
+  state = radio.setCRC(true);
+  if (state != RADIOLIB_ERR_NONE) stopWithError(F("Enable CRC"), state);
 #if TBEAM_TEST_STAGE >= 3
   radio.setPacketReceivedAction(onPacketReceived);
 #endif
@@ -108,6 +110,9 @@ void setup() {
 void loop() {
 #if TBEAM_TEST_STAGE >= 3
   String ping = "PING:" + String(sequence++);
+  const String expectedReply = "PONG:" + ping.substring(5);
+  static uint32_t matched = 0;
+  static uint32_t timeouts = 0;
   Serial.print(F("TX  "));
   Serial.println(ping);
 
@@ -139,14 +144,23 @@ void loop() {
       Serial.print(F(" dBm  SNR="));
       Serial.print(radio.getSNR());
       Serial.println(F(" dB"));
+      if (reply == expectedReply) {
+        Serial.printf("PONG matched | matched=%lu\n",
+                      static_cast<unsigned long>(++matched));
+      } else {
+        Serial.printf("Unexpected reply; expected %s\n", expectedReply.c_str());
+      }
     } else {
       Serial.print(F("RX read failed, code "));
       Serial.println(state);
     }
   } else {
-    radio.standby();
-    Serial.println(F("RX  timeout"));
+    Serial.printf("RX  timeout | timeouts=%lu\n",
+                  static_cast<unsigned long>(++timeouts));
   }
+
+  state = radio.standby();
+  if (state != RADIOLIB_ERR_NONE) stopWithError(F("Standby"), state);
 
   delay(2000);
 #else
