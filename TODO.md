@@ -84,7 +84,7 @@ The TFT chip select is held high because it shares the SPI bus.
 
 ## Feather ESP32-S3 TFT — main board only (stage 0)
 
-The `feather_esp32s3_tft` environment sets `FEATHER_MAIN_BOARD_TEST=1`, excluding the original M0 gateway code. Set `FEATHER_TEST_STAGE=0` for this serial-only test. No FeatherWings are needed; the built-in TFT is not initialized yet.
+The `feather_esp32s3_tft` environment builds the ESP32-S3 gateway; the original M0 code is archived in `examples/legacy_feather_m0/main.cpp`. Set `FEATHER_TEST_STAGE=0` for this serial-only test. No FeatherWings are needed; the built-in TFT is not initialized yet.
 
 - [ ] Connect only the main Feather board with a USB data cable.
 - [ ] In VS Code, expand **PlatformIO → PROJECT TASKS → feather_esp32s3_tft → General**.

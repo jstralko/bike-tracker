@@ -176,4 +176,15 @@ than a fabricated percentage. A connected single-cell LiPo is needed for a
 meaningful reading; USB-only operation cannot reliably identify battery presence
 from gauge readings. Percentage is an estimate, not a charging indicator.
 The LC709203F currently uses Adafruit's 500 mAh profile; adjust setPackSize in
-beginBattery for your battery capacity if this older gauge is detected.
+src/feather_gateway/hardware.h for your battery capacity if this older gauge is detected.
+
+## Firmware organization
+
+Each board's `main.cpp` owns setup and its ping/pong flow. One shared helper
+layer in `include/LinkProtocol.h` defines radio settings, packet construction,
+validation, timing constants, and received-packet logging; there is no driver
+wrapper or inheritance hierarchy. `include/LinkScreen.h` renders the shared
+view. Feather display/battery helpers are in `src/feather_gateway/hardware.h`;
+T-Beam display helpers are in `src/tbeam_supreme/display.h`. Wiring and PMU
+setup remain explicit on their respective boards. The unused M0 gateway is
+preserved under `examples/legacy_feather_m0` and is not part of either build.

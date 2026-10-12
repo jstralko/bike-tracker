@@ -1,7 +1,5 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include <Adafruit_SH110X.h>
-#include "LinkScreen.h"
 
 // Start at 0 and increase one stage at a time; see TODO.md.
 // 0 = serial only, 1 = PMU power, 2 = radio init, 3 = ping/pong.
@@ -17,51 +15,18 @@
 #include <SPI.h>
 #endif
 #if TBEAM_TEST_STAGE >= 1
-#include <Wire.h>
 
 #define XPOWERS_CHIP_AXP2101
 #include <XPowersLib.h>
 #endif
 
-namespace {
-Adafruit_SH1106G display(128, 64, &Wire, -1);
-LinkScreen screen;
-bool displayReady = false;
-void updateScreen() {
-  static uint32_t previous = 0;
-  if (!displayReady || millis() - previous < 150) return;
-  previous = millis();
-  display.clearDisplay();
-  screen.draw(display, "T-BEAM / TRACKER", SH110X_WHITE);
-  display.display();
-}
-void screenDelay(uint32_t duration) {
-  uint32_t started = millis();
-  while (millis() - started < duration) { updateScreen(); delay(1); }
-}
-void beginScreen() {
-  Wire.begin(17, 18);
-  Wire.setClock(400000);
-  // Prefer 0x3D on newer boards; 0x3C may be the magnetometer.
-  for (uint8_t address : {uint8_t(0x3D), uint8_t(0x3C)}) {
-    Wire.beginTransmission(address);
-    if (Wire.endTransmission() == 0) {
-      displayReady = display.begin(address, true);
-      if (displayReady) { Serial.printf("OLED ready at 0x%02X\n", address); break; }
-    }
-  }
-  if (!displayReady) Serial.println(F("OLED unavailable; serial logging continues"));
-  updateScreen();
-}
+#include "display.h"
 #if TBEAM_TEST_STAGE >= 2
-constexpr float kFrequencyMHz = 915.0;
-constexpr float kBandwidthKHz = 125.0;
-constexpr uint8_t kSpreadingFactor = 9;
-constexpr uint8_t kCodingRate = 7;
-constexpr uint8_t kSyncWord = 0x12;
-constexpr int8_t kTxPowerDbm = 17;
-constexpr uint16_t kPreambleLength = 8;
+#include "LinkProtocol.h"
+#endif
 
+namespace {
+#if TBEAM_TEST_STAGE >= 2
 constexpr int kRadioSck = 12;
 constexpr int kRadioMiso = 13;
 constexpr int kRadioMosi = 11;
@@ -131,25 +96,21 @@ void setup() {
   Serial.println(F("Initializing SX1262..."));
   radioSpi.begin(kRadioSck, kRadioMiso, kRadioMosi, kRadioCs);
 
-  int16_t state = radio.begin(kFrequencyMHz, kBandwidthKHz,
-                              kSpreadingFactor, kCodingRate, kSyncWord,
-                              kTxPowerDbm, kPreambleLength);
+  int16_t state = linkProtocol::initializeRadio(radio);
   if (state != RADIOLIB_ERR_NONE) stopWithError(F("Radio init"), state);
-  state = radio.setCRC(true);
-  if (state != RADIOLIB_ERR_NONE) stopWithError(F("Enable CRC"), state);
 #if TBEAM_TEST_STAGE >= 3
   radio.setPacketReceivedAction(onPacketReceived);
 #endif
   Serial.println(F("Radio ready at 915 MHz"));
 #endif
-  screen.status = "RADIO READY";
+  screen.status = TBEAM_TEST_STAGE >= 2 ? "RADIO READY" : "SERIAL READY";
   Serial.println(F("Setup complete"));
 }
 
 void loop() {
 #if TBEAM_TEST_STAGE >= 3
-  String ping = "PING:" + String(sequence++);
-  const String expectedReply = "PONG:" + ping.substring(5);
+  String ping = linkProtocol::ping(sequence++);
+  const String expectedReply = linkProtocol::pongFor(ping);
   static uint32_t matched = 0;
   static uint32_t timeouts = 0;
   Serial.print(F("TX  "));
@@ -163,7 +124,7 @@ void loop() {
     Serial.print(F("TX failed, code "));
     Serial.println(state);
     screen.status = "TX ERROR"; screen.packet = "Code " + String(state);
-    screenDelay(2000);
+    screenDelay(linkProtocol::kPingIntervalMs);
     return;
   }
 
@@ -173,7 +134,7 @@ void loop() {
   state = radio.startReceive();
   if (state != RADIOLIB_ERR_NONE) stopWithError(F("Start receive"), state);
 
-  const uint32_t deadline = millis() + 1500;
+  const uint32_t deadline = millis() + linkProtocol::kPongTimeoutMs;
   while (!packetReceived && static_cast<int32_t>(deadline - millis()) > 0) {
     updateScreen();
     delay(1);
@@ -183,13 +144,7 @@ void loop() {
     String reply;
     state = radio.readData(reply);
     if (state == RADIOLIB_ERR_NONE) {
-      Serial.print(F("RX  "));
-      Serial.print(reply);
-      Serial.print(F("  RSSI="));
-      Serial.print(radio.getRSSI());
-      Serial.print(F(" dBm  SNR="));
-      Serial.print(radio.getSNR());
-      Serial.println(F(" dB"));
+      linkProtocol::logReceived(radio, reply);
       if (reply == expectedReply) {
         if (screen.peerSilent) Serial.println(F("Feather back: matching pong received"));
         screen.peerSilent = false;
@@ -217,7 +172,7 @@ void loop() {
   state = radio.standby();
   if (state != RADIOLIB_ERR_NONE) stopWithError(F("Standby"), state);
 
-  screenDelay(2000);
+  screenDelay(linkProtocol::kPingIntervalMs);
 #else
   // Repeat so opening the USB monitor after boot still shows useful output.
   static uint32_t heartbeat = 0;
