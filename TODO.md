@@ -141,3 +141,7 @@ If a port exists but access is denied, inspect `ls -l /dev/ttyACM*` and `id` in 
 - [ ] Disconnect the Feather: after a pong timeout, confirm T-Beam shows a
       blinking FEATHER SILENT warning with empty signal bars and no moving dot.
 - [ ] Reconnect Feather and confirm a matching pong restores LINK OK and animation.
+
+- [ ] With a LiPo connected, verify Feather battery percentage/voltage and icon.
+- [ ] Confirm battery readings refresh on battery power and ping/pong continues.
+- [ ] If LC709203F is detected, set its pack-size profile for the actual battery.

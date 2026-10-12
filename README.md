@@ -168,3 +168,12 @@ ping attempts until a matching pong restores LINK OK. Unexpected packets do
 not restore the peer indicator or replace the last matching pong's signal data.
 The existing timeout count continues in serial logs. Radio errors are still
 shown as errors rather than being hidden by the silent-peer warning.
+
+The Feather dashboard includes battery percentage, voltage, and a fill icon,
+updated every five seconds. Below 20% it turns red. It auto-detects the onboard
+MAX17048 or older LC709203F gauge; missing/invalid readings show BAT -- rather
+than a fabricated percentage. A connected single-cell LiPo is needed for a
+meaningful reading; USB-only operation cannot reliably identify battery presence
+from gauge readings. Percentage is an estimate, not a charging indicator.
+The LC709203F currently uses Adafruit's 500 mAh profile; adjust setPackSize in
+beginBattery for your battery capacity if this older gauge is detected.
