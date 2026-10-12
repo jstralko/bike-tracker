@@ -58,7 +58,7 @@ If no logs appear, check the selected serial port (`pio device list`), the data 
       successful replies resume without resetting the T-Beam.
 - [ ] Leave both running and confirm replies keep matching during the field test.
 
-This test uses radio only; GPS parsing and TFT rendering remain disabled.
+This test includes live screen dashboards; GPS parsing remains disabled.
 The Feather stage is selected in `platformio.ini`; T-Beam defaults to stage 3.
 
 ## Feather ESP32-S3 TFT — radio initialization
@@ -124,3 +124,11 @@ If the Feather has no serial port, hold BOOT, tap RESET, then release BOOT to en
 The ROM/UF2 bootloader and running sketch may expose different USB identities. For a first or recovery upload, select the current bootloader port explicitly with `--upload-port /dev/ttyACM...`, then identify the running sketch's path after reset. Do not permanently assign a bootloader-only by-id path as the monitor port.
 
 If a port exists but access is denied, inspect `ls -l /dev/ttyACM*` and `id` in the VS Code terminal. Configure host serial access using the appropriate device group or PlatformIO udev rules, then restart your login session/VS Code after changing group membership.
+
+## Screen dashboard verification
+
+- [ ] Upload both builds and confirm Feather TFT and T-Beam OLED are readable.
+- [ ] Confirm counters, packets, and RSSI/SNR update with matching ping/pong.
+- [ ] Confirm animation moves while waiting and OLED shows TIMEOUT with gateway off.
+- [ ] Check the Feather display orientation; adjust setRotation(3) if needed.
+- [ ] Confirm serial packet logs still work and reception remains reliable.

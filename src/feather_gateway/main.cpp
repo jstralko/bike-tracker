@@ -8,6 +8,8 @@
 #if FEATHER_MAIN_BOARD_TEST
 #include <RadioLib.h>
 #include <SPI.h>
+#include <Adafruit_ST7789.h>
+#include "LinkScreen.h"
 
 // Stage 0: serial only. Stage 1: radio standby. Stage 2: ping/pong gateway.
 // Confirm these GPIOs match the FeatherWing's soldered jumpers before upload.
@@ -28,6 +30,26 @@
 #endif
 
 namespace {
+Adafruit_ST7789 display(&SPI, TFT_CS, TFT_DC, TFT_RST);
+GFXcanvas16 frame(240, 135);
+LinkScreen screen;
+void updateScreen() {
+  static uint32_t previous = 0;
+  if (millis() - previous < 120) return;
+  previous = millis();
+  if (!frame.getBuffer()) return;
+  frame.fillScreen(0);
+  screen.draw(frame, "FEATHER / GATEWAY", ST77XX_CYAN);
+  display.drawRGBBitmap(0, 0, frame.getBuffer(), 240, 135);
+}
+void beginScreen() {
+  pinMode(TFT_I2C_POWER, OUTPUT); digitalWrite(TFT_I2C_POWER, HIGH);
+  pinMode(FEATHER_RADIO_CS, OUTPUT); digitalWrite(FEATHER_RADIO_CS, HIGH);
+  SPI.begin(SCK, MISO, MOSI);
+  display.init(135, 240); display.setRotation(3);
+  pinMode(TFT_BACKLITE, OUTPUT); digitalWrite(TFT_BACKLITE, HIGH);
+  display.fillScreen(ST77XX_BLACK);
+}
 #if FEATHER_TEST_STAGE >= 1
 SX1276 radio = new Module(FEATHER_RADIO_CS, FEATHER_RADIO_IRQ,
                           FEATHER_RADIO_RST, RADIOLIB_NC);
@@ -43,6 +65,7 @@ void listen() {
   packetReceived = false;
   radioStatus = radio.startReceive();
   radioReady = radioStatus == RADIOLIB_ERR_NONE;
+  screen.status = radioReady ? "LISTENING" : "RX ERROR " + String(radioStatus);
   if (!radioReady) Serial.printf("Start receive failed, code %d\n", radioStatus);
 }
 
@@ -52,6 +75,7 @@ void pollRadio() {
   String message;
   int16_t state = radio.readData(message);
   if (state == RADIOLIB_ERR_NONE) {
+    screen.received(message, radio.getRSSI(), radio.getSNR());
     Serial.printf("RX  %s  RSSI=%.2f dBm  SNR=%.2f dB\n",
                   message.c_str(), radio.getRSSI(), radio.getSNR());
     bool validPing = message.startsWith("PING:") && message.length() > 5;
@@ -64,15 +88,21 @@ void pollRadio() {
       state = radio.transmit(pong);
       if (state == RADIOLIB_ERR_NONE) {
         ++pongsSent;
+        ++screen.tx;
+        screen.packet = pong;
         Serial.printf("TX  %s | pongs=%lu\n", pong.c_str(),
                       static_cast<unsigned long>(pongsSent));
       } else {
+        screen.packet = "TX ERROR " + String(state);
+        ++screen.misses;
         Serial.printf("TX failed, code %d\n", state);
       }
     } else {
       Serial.println(F("Ignoring packet: expected PING:<sequence>"));
     }
   } else {
+    screen.packet = "RX ERROR " + String(state);
+    ++screen.misses;
     Serial.printf("RX read failed, code %d\n", state);
   }
   listen();
@@ -80,7 +110,7 @@ void pollRadio() {
 #endif
 
 void initializeRadio() {
-  // The built-in TFT shares SPI; keep its chip select inactive.
+  // Radio and TFT share SPI; each driver uses its own chip select.
   pinMode(TFT_CS, OUTPUT);
   digitalWrite(TFT_CS, HIGH);
   SPI.begin(SCK, MISO, MOSI);
@@ -91,6 +121,7 @@ void initializeRadio() {
   if (radioStatus == RADIOLIB_ERR_NONE) radioStatus = radio.setCRC(true);
   if (radioStatus == RADIOLIB_ERR_NONE) radioStatus = radio.standby();
   radioReady = radioStatus == RADIOLIB_ERR_NONE;
+  screen.status = radioReady ? "RADIO READY" : "INIT ERROR " + String(radioStatus);
   if (radioReady) {
 #if FEATHER_TEST_STAGE == 2
     radio.setPacketReceivedAction(onPacketReceived);
@@ -113,6 +144,7 @@ void initializeRadio() {
 void setup() {
   Serial.begin(115200);
   delay(1500);
+  beginScreen();
   Serial.println(F("Feather ESP32-S3 TFT bring-up"));
 #if FEATHER_TEST_STAGE >= 1
   initializeRadio();
@@ -121,6 +153,7 @@ void setup() {
 }
 
 void loop() {
+  updateScreen();
 #if FEATHER_TEST_STAGE == 2
   pollRadio();
   static uint32_t lastHeartbeat = 0;
@@ -131,19 +164,19 @@ void loop() {
   lastHeartbeat = millis();
 #endif
   static uint32_t heartbeat = 0;
-  Serial.print(F("Heartbeat "));
-  Serial.print(heartbeat++);
-  Serial.print(F(" | uptime_ms="));
-  Serial.print(millis());
+  //Serial.print(F("Heartbeat "));
+  //Serial.print(heartbeat++);
+  //Serial.print(F(" | uptime_ms="));
+  //Serial.print(millis());
 #if FEATHER_TEST_STAGE >= 1
 #if FEATHER_TEST_STAGE == 2
-  Serial.print(F(" | test=ping-pong | radio="));
+  //Serial.print(F(" | test=ping-pong | radio="));
 #else
   Serial.print(F(" | test=radio-init | radio="));
 #endif
-  Serial.print(radioReady ? F("ready") : F("failed"));
-  Serial.print(F(" | code="));
-  Serial.println(radioStatus);
+  //Serial.print(radioReady ? F("ready") : F("failed"));
+  //Serial.print(F(" | code="));
+  //Serial.println(radioStatus);
 #else
   Serial.println(F(" | test=serial-only"));
 #endif

@@ -36,7 +36,7 @@ If the base Feather is not a Feather M0, change the three `kRadio...` constants 
 Use **`feather_esp32s3_tft`** for the Feather and **`tbeam_supreme`** for
 the T-Beam. The default stages now enable ping/pong on both boards. The
 Feather's verified wiring is CS→B/GPIO10, IRQ→D/GPIO6, and radio RST→GPIO11
-through the repaired bypass. GPS and TFT rendering are not enabled.
+through the repaired bypass. GPS is not enabled. Both screens show a live link dashboard.
 
 Attach both 915 MHz antennas, close the target board's monitor, and upload:
 
@@ -134,4 +134,19 @@ At stages `1` and above, the T-Beam code initializes its AXP2101 power manager a
 
 ## Current scope
 
-This is intentionally only a link test: no addressing, retries, authentication, encryption, sleep mode, display, or GPS payload. A practical next step is to put the T-Beam's L76K position and battery state into a compact packet, then add acknowledgements and retry limits.
+This is intentionally only a link test: no addressing, retries, authentication, encryption, sleep mode, or GPS payload. A practical next step is to put the T-Beam's L76K position and battery state into a compact packet, then add acknowledgements and retry limits.
+
+## Live screen dashboards
+
+The Feather TFT shows a cyan dashboard with link state, TX/RX counts, the last
+packet, RSSI/SNR, error count, and packet age. The T-Beam SH1106 OLED shows a
+compact version with LINK OK, WAITING PONG, TIMEOUT, or radio errors. Both have
+an animated moving dot and bars indicating the last received signal strength;
+the dot is a running indicator, not proof of a successful packet.
+
+The Feather buffers its frame to reduce flicker and shares SPI with the radio
+using separate chip selects. Screen refreshes are limited to roughly 8 Hz.
+The T-Beam uses I2C GPIO17/18, enables the OLED ALDO1 power rail, and probes
+0x3D before 0x3C to accommodate board revisions. If no display is detected,
+serial logging and radio operations continue. Actual screen orientation and
+radio operation with refreshes enabled still need checking on the boards.

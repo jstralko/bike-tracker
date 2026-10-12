@@ -1,4 +1,7 @@
 #include <Arduino.h>
+#include <Wire.h>
+#include <Adafruit_SH110X.h>
+#include "LinkScreen.h"
 
 // Start at 0 and increase one stage at a time; see TODO.md.
 // 0 = serial only, 1 = PMU power, 2 = radio init, 3 = ping/pong.
@@ -21,6 +24,35 @@
 #endif
 
 namespace {
+Adafruit_SH1106G display(128, 64, &Wire, -1);
+LinkScreen screen;
+bool displayReady = false;
+void updateScreen() {
+  static uint32_t previous = 0;
+  if (!displayReady || millis() - previous < 150) return;
+  previous = millis();
+  display.clearDisplay();
+  screen.draw(display, "T-BEAM / TRACKER", SH110X_WHITE);
+  display.display();
+}
+void screenDelay(uint32_t duration) {
+  uint32_t started = millis();
+  while (millis() - started < duration) { updateScreen(); delay(1); }
+}
+void beginScreen() {
+  Wire.begin(17, 18);
+  Wire.setClock(400000);
+  // Prefer 0x3D on newer boards; 0x3C may be the magnetometer.
+  for (uint8_t address : {uint8_t(0x3D), uint8_t(0x3C)}) {
+    Wire.beginTransmission(address);
+    if (Wire.endTransmission() == 0) {
+      displayReady = display.begin(address, true);
+      if (displayReady) { Serial.printf("OLED ready at 0x%02X\n", address); break; }
+    }
+  }
+  if (!displayReady) Serial.println(F("OLED unavailable; serial logging continues"));
+  updateScreen();
+}
 #if TBEAM_TEST_STAGE >= 2
 constexpr float kFrequencyMHz = 915.0;
 constexpr float kBandwidthKHz = 125.0;
@@ -60,7 +92,9 @@ void ARDUINO_ISR_ATTR onPacketReceived() {
   Serial.print(what);
   Serial.print(F(" failed, RadioLib code "));
   Serial.println(code);
-  while (true) delay(1000);
+  screen.status = "RADIO ERROR";
+  screen.packet = "Code " + String(code);
+  while (true) screenDelay(1000);
 }
 #endif
 
@@ -70,6 +104,9 @@ void enableRadioPower() {
     Serial.println(F("AXP2101 not found; cannot power the LoRa radio."));
     while (true) delay(1000);
   }
+  // OLED/sensor rail; leave the ESP32's DC1 rail at its existing setting.
+  pmu.setALDO1Voltage(3300);
+  pmu.enableALDO1();
   pmu.setALDO3Voltage(3300);
   pmu.enableALDO3();
   delay(100);
@@ -89,6 +126,7 @@ void setup() {
   enableRadioPower();
   Serial.println(F("AXP2101 ready; ALDO3 enabled"));
 #endif
+  beginScreen();
 #if TBEAM_TEST_STAGE >= 2
   Serial.println(F("Initializing SX1262..."));
   radioSpi.begin(kRadioSck, kRadioMiso, kRadioMosi, kRadioCs);
@@ -104,6 +142,7 @@ void setup() {
 #endif
   Serial.println(F("Radio ready at 915 MHz"));
 #endif
+  screen.status = "RADIO READY";
   Serial.println(F("Setup complete"));
 }
 
@@ -115,21 +154,27 @@ void loop() {
   static uint32_t timeouts = 0;
   Serial.print(F("TX  "));
   Serial.println(ping);
+  screen.status = "SENDING PING"; screen.packet = ping;
+  updateScreen();
 
   int16_t state = radio.transmit(ping);
   if (state != RADIOLIB_ERR_NONE) {
     Serial.print(F("TX failed, code "));
     Serial.println(state);
-    delay(2000);
+    screen.status = "TX ERROR"; screen.packet = "Code " + String(state);
+    screenDelay(2000);
     return;
   }
 
+  ++screen.tx;
+  screen.status = "WAITING PONG";
   packetReceived = false;
   state = radio.startReceive();
   if (state != RADIOLIB_ERR_NONE) stopWithError(F("Start receive"), state);
 
   const uint32_t deadline = millis() + 1500;
   while (!packetReceived && static_cast<int32_t>(deadline - millis()) > 0) {
+    updateScreen();
     delay(1);
   }
 
@@ -137,6 +182,7 @@ void loop() {
     String reply;
     state = radio.readData(reply);
     if (state == RADIOLIB_ERR_NONE) {
+      screen.received(reply, radio.getRSSI(), radio.getSNR());
       Serial.print(F("RX  "));
       Serial.print(reply);
       Serial.print(F("  RSSI="));
@@ -145,16 +191,20 @@ void loop() {
       Serial.print(radio.getSNR());
       Serial.println(F(" dB"));
       if (reply == expectedReply) {
+        screen.status = "LINK OK";
         Serial.printf("PONG matched | matched=%lu\n",
                       static_cast<unsigned long>(++matched));
       } else {
+        screen.status = "WRONG REPLY";
         Serial.printf("Unexpected reply; expected %s\n", expectedReply.c_str());
       }
     } else {
+      screen.status = "RX ERROR"; screen.packet = "Code " + String(state);
       Serial.print(F("RX read failed, code "));
       Serial.println(state);
     }
   } else {
+    screen.status = "TIMEOUT"; ++screen.misses;
     Serial.printf("RX  timeout | timeouts=%lu\n",
                   static_cast<unsigned long>(++timeouts));
   }
@@ -162,7 +212,7 @@ void loop() {
   state = radio.standby();
   if (state != RADIOLIB_ERR_NONE) stopWithError(F("Standby"), state);
 
-  delay(2000);
+  screenDelay(2000);
 #else
   // Repeat so opening the USB monitor after boot still shows useful output.
   static uint32_t heartbeat = 0;
@@ -172,6 +222,6 @@ void loop() {
   Serial.print(millis());
   Serial.print(F(" | stage="));
   Serial.println(TBEAM_TEST_STAGE);
-  delay(1000);
+  screenDelay(1000);
 #endif
 }
