@@ -132,3 +132,12 @@ If a port exists but access is denied, inspect `ls -l /dev/ttyACM*` and `id` in 
 - [ ] Confirm animation moves while waiting and OLED shows TIMEOUT with gateway off.
 - [ ] Check the Feather display orientation; adjust setRotation(3) if needed.
 - [ ] Confirm serial packet logs still work and reception remains reliable.
+
+- [ ] Unplug the T-Beam: after six seconds the Feather should turn orange,
+      show T-BEAM SILENT, pause its dot, clear bars, and increment GAPS.
+- [ ] Reconnect the T-Beam: the next valid ping should restore the cyan
+      PING RECEIVED state, with the historical GAPS count preserved.
+
+- [ ] Disconnect the Feather: after a pong timeout, confirm T-Beam shows a
+      blinking FEATHER SILENT warning with empty signal bars and no moving dot.
+- [ ] Reconnect Feather and confirm a matching pong restores LINK OK and animation.

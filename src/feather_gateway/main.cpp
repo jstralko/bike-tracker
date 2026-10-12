@@ -39,7 +39,7 @@ void updateScreen() {
   previous = millis();
   if (!frame.getBuffer()) return;
   frame.fillScreen(0);
-  screen.draw(frame, "FEATHER / GATEWAY", ST77XX_CYAN);
+  screen.draw(frame, "FEATHER / GATEWAY", screen.peerSilent ? ST77XX_ORANGE : ST77XX_CYAN);
   display.drawRGBBitmap(0, 0, frame.getBuffer(), 240, 135);
 }
 void beginScreen() {
@@ -58,6 +58,24 @@ bool radioReady = false;
 #if FEATHER_TEST_STAGE == 2
 volatile bool packetReceived = false;
 uint32_t pongsSent = 0;
+// Successful pings are roughly 2.5 s apart; allow a failed exchange plus margin.
+constexpr uint32_t kPeerTimeoutMs = 6000;
+uint32_t lastValidPing = 0;
+uint32_t countedSilenceWindows = 0;
+bool seenValidPing = false;
+
+void updatePeerStatus() {
+  if (!radioReady) return;  // Keep radio errors visible.
+  const uint32_t windows = (millis() - lastValidPing) / kPeerTimeoutMs;
+  if (windows > countedSilenceWindows) {
+    screen.silenceWindows += windows - countedSilenceWindows;
+    countedSilenceWindows = windows;
+  }
+  const bool silent = windows > 0;
+  if (silent && !screen.peerSilent) Serial.println(F("T-Beam silent: no valid ping for 6 seconds"));
+  screen.peerSilent = silent;
+  screen.status = silent ? "T-BEAM SILENT" : (seenValidPing ? "PING RECEIVED" : "WAITING T-BEAM");
+}
 
 void ARDUINO_ISR_ATTR onPacketReceived() { packetReceived = true; }
 
@@ -65,7 +83,8 @@ void listen() {
   packetReceived = false;
   radioStatus = radio.startReceive();
   radioReady = radioStatus == RADIOLIB_ERR_NONE;
-  screen.status = radioReady ? "LISTENING" : "RX ERROR " + String(radioStatus);
+  if (radioReady) updatePeerStatus();
+  else screen.status = "RX ERROR " + String(radioStatus);
   if (!radioReady) Serial.printf("Start receive failed, code %d\n", radioStatus);
 }
 
@@ -75,7 +94,6 @@ void pollRadio() {
   String message;
   int16_t state = radio.readData(message);
   if (state == RADIOLIB_ERR_NONE) {
-    screen.received(message, radio.getRSSI(), radio.getSNR());
     Serial.printf("RX  %s  RSSI=%.2f dBm  SNR=%.2f dB\n",
                   message.c_str(), radio.getRSSI(), radio.getSNR());
     bool validPing = message.startsWith("PING:") && message.length() > 5;
@@ -83,6 +101,12 @@ void pollRadio() {
       validPing = message[i] >= '0' && message[i] <= '9';
     }
     if (validPing) {
+      if (screen.peerSilent) Serial.println(F("T-Beam back: valid ping received"));
+      lastValidPing = millis();
+      countedSilenceWindows = 0;
+      seenValidPing = true;
+      screen.peerSilent = false;
+      screen.received(message, radio.getRSSI(), radio.getSNR());
       String pong = "PONG:" + message.substring(5);
       delay(50);  // Give the T-Beam time to switch from TX to RX.
       state = radio.transmit(pong);
@@ -125,6 +149,7 @@ void initializeRadio() {
   if (radioReady) {
 #if FEATHER_TEST_STAGE == 2
     radio.setPacketReceivedAction(onPacketReceived);
+    lastValidPing = millis();
     listen();
     if (radioReady) Serial.println(F("Listening at 915 MHz | test=ping-pong"));
 #else
@@ -153,15 +178,18 @@ void setup() {
 }
 
 void loop() {
-  updateScreen();
 #if FEATHER_TEST_STAGE == 2
   pollRadio();
+  updatePeerStatus();
+  updateScreen();
   static uint32_t lastHeartbeat = 0;
   if (millis() - lastHeartbeat < 1000) {
     delay(1);
     return;
   }
   lastHeartbeat = millis();
+#else
+  updateScreen();
 #endif
   static uint32_t heartbeat = 0;
   //Serial.print(F("Heartbeat "));

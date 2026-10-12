@@ -154,7 +154,8 @@ void loop() {
   static uint32_t timeouts = 0;
   Serial.print(F("TX  "));
   Serial.println(ping);
-  screen.status = "SENDING PING"; screen.packet = ping;
+  screen.status = screen.peerSilent ? "FEATHER SILENT" : "SENDING PING";
+  screen.packet = ping;
   updateScreen();
 
   int16_t state = radio.transmit(ping);
@@ -167,7 +168,7 @@ void loop() {
   }
 
   ++screen.tx;
-  screen.status = "WAITING PONG";
+  screen.status = screen.peerSilent ? "FEATHER SILENT" : "WAITING PONG";
   packetReceived = false;
   state = radio.startReceive();
   if (state != RADIOLIB_ERR_NONE) stopWithError(F("Start receive"), state);
@@ -182,7 +183,6 @@ void loop() {
     String reply;
     state = radio.readData(reply);
     if (state == RADIOLIB_ERR_NONE) {
-      screen.received(reply, radio.getRSSI(), radio.getSNR());
       Serial.print(F("RX  "));
       Serial.print(reply);
       Serial.print(F("  RSSI="));
@@ -191,11 +191,14 @@ void loop() {
       Serial.print(radio.getSNR());
       Serial.println(F(" dB"));
       if (reply == expectedReply) {
+        if (screen.peerSilent) Serial.println(F("Feather back: matching pong received"));
+        screen.peerSilent = false;
+        screen.received(reply, radio.getRSSI(), radio.getSNR());
         screen.status = "LINK OK";
         Serial.printf("PONG matched | matched=%lu\n",
                       static_cast<unsigned long>(++matched));
       } else {
-        screen.status = "WRONG REPLY";
+        screen.status = screen.peerSilent ? "FEATHER SILENT" : "WRONG REPLY";
         Serial.printf("Unexpected reply; expected %s\n", expectedReply.c_str());
       }
     } else {
@@ -204,7 +207,9 @@ void loop() {
       Serial.println(state);
     }
   } else {
-    screen.status = "TIMEOUT"; ++screen.misses;
+    if (!screen.peerSilent) Serial.println(F("Feather silent: no matching pong before timeout"));
+    screen.peerSilent = true;
+    screen.status = "FEATHER SILENT"; ++screen.misses;
     Serial.printf("RX  timeout | timeouts=%lu\n",
                   static_cast<unsigned long>(++timeouts));
   }

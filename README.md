@@ -150,3 +150,21 @@ The T-Beam uses I2C GPIO17/18, enables the OLED ALDO1 power rail, and probes
 0x3D before 0x3C to accommodate board revisions. If no display is detected,
 serial logging and radio operations continue. Actual screen orientation and
 radio operation with refreshes enabled still need checking on the boards.
+
+The Feather peer indicator is based only on valid `PING:<sequence>` packets.
+It shows WAITING T-BEAM initially, PING RECEIVED after traffic, and an orange
+T-BEAM SILENT screen after six seconds without a valid ping. Silence pauses
+animation and clears signal bars. GAPS counts cumulative six-second silence
+intervals (including waiting at startup); ERR counts radio read/transmit errors.
+LAST is the age of the last valid ping, and RSSI/SNR remain its historical
+measurements. A new valid ping restores the live state automatically; unrelated
+packets do not keep the peer indicator alive. A transmitted pong does not prove
+it reached the T-Beam; check the T-Beam's PONG matched log for that direction.
+
+The T-Beam shows FEATHER SILENT after a pong receive timeout (1.5 seconds).
+Its monochrome warning alternates normal/inverted every half-second, clears
+signal bars, and pauses the moving dot. The warning stays visible during later
+ping attempts until a matching pong restores LINK OK. Unexpected packets do
+not restore the peer indicator or replace the last matching pong's signal data.
+The existing timeout count continues in serial logs. Radio errors are still
+shown as errors rather than being hidden by the silent-peer warning.

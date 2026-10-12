@@ -10,6 +10,8 @@ struct LinkScreen {
   float rssi = 0, snr = 0;
   bool hasSignal = false;
   uint32_t lastPacket = 0;
+  bool peerSilent = false;
+  uint32_t silenceWindows = 0;
 
   void received(const String &message, float strength, float noise) {
     packet = message;
@@ -30,7 +32,14 @@ struct LinkScreen {
     g.setCursor(0, 0); g.print(title);
     const int y = large ? 23 : 12;
     g.drawFastHLine(0, y - 3, w, ink);
+    // On the monochrome OLED, blink an inverted warning while the peer is silent.
+    const bool invertWarning = !large && peerSilent && (millis() / 500) % 2 == 0;
+    if (invertWarning) {
+      g.fillRect(0, y - 1, w, 10, ink);
+      g.setTextColor(0);
+    }
     g.setCursor(0, y); g.print(status.substring(0, large ? 18 : 19));
+    g.setTextColor(ink);
     g.setCursor(0, y + 10 * scale);
     g.printf("TX:%lu RX:%lu", (unsigned long)tx, (unsigned long)rx);
     g.setTextSize(1);
@@ -41,7 +50,8 @@ struct LinkScreen {
     g.print(packet.substring(0, w / 6));
     if (large) {
       g.setCursor(0, 98);
-      g.printf("MISS:%lu  LAST:", (unsigned long)misses);
+      g.printf("GAPS:%lu ERR:%lu LAST:", (unsigned long)silenceWindows,
+               (unsigned long)misses);
       if (hasSignal) g.printf("%lus", (unsigned long)((millis()-lastPacket)/1000));
       else g.print("--");
     }
@@ -51,8 +61,8 @@ struct LinkScreen {
     g.drawCircle(w - 38, bottom, 3, ink);
     g.drawFastHLine(8, bottom, w - 50, ink);
     const int travel = (millis() / 45) % (w - 50);
-    g.fillCircle(8 + travel, bottom, 2, ink);
-    const int bars = hasSignal ? constrain((int)((rssi + 120) / 12), 0, 5) : 0;
+    if (!peerSilent) g.fillCircle(8 + travel, bottom, 2, ink);
+    const int bars = hasSignal && !peerSilent ? constrain((int)((rssi + 120) / 12), 0, 5) : 0;
     for (int i = 0; i < 5; ++i) {
       int height = 2 + i * 2;
       if (i < bars) g.fillRect(w - 28 + i * 5, g.height()-height, 3, height, ink);
