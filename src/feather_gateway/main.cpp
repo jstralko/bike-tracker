@@ -138,6 +138,7 @@ void setup() {
   delay(1500);
   beginScreen();
   beginBattery();
+  beginGps();
   Serial.println(F("Feather ESP32-S3 TFT bring-up"));
 #if FEATHER_TEST_STAGE >= 1
   initializeRadio();
@@ -146,6 +147,8 @@ void setup() {
 }
 
 void loop() {
+  pollGps();
+  logGps();
   updateBattery();
 #if FEATHER_TEST_STAGE == 2
   pollRadio();

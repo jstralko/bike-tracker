@@ -36,7 +36,7 @@ If the base Feather is not a Feather M0, change the three `kRadio...` constants 
 Use **`feather_esp32s3_tft`** for the Feather and **`tbeam_supreme`** for
 the T-Beam. The default stages now enable ping/pong on both boards. The
 Feather's verified wiring is CS→B/GPIO10, IRQ→D/GPIO6, and radio RST→GPIO11
-through the repaired bypass. GPS is not enabled. Both screens show a live link dashboard.
+through the repaired bypass. The Feather initializes its GPS locally; ping/pong packets still contain only sequence numbers. Both screens show a live link dashboard.
 
 Attach both 915 MHz antennas, close the target board's monitor, and upload:
 
@@ -188,3 +188,29 @@ view. Feather display/battery helpers are in `src/feather_gateway/hardware.h`;
 T-Beam display helpers are in `src/tbeam_supreme/display.h`. Wiring and PMU
 setup remain explicit on their respective boards. The unused M0 gateway is
 preserved under `examples/legacy_feather_m0` and is not part of either build.
+
+## Feather GPS bring-up
+
+Side-by-side Ultimate GPS FeatherWing wiring: 3V→Feather 3V, GND→GND,
+GPS TX breakout→Feather RX/GPIO2, GPS RX breakout→Feather TX/GPIO1.
+GPS helpers in `src/feather_gateway/gps.h` start Serial1 at 9600 baud, request
+RMC/GGA sentences at 1 Hz, and poll without waiting for a satellite fix.
+The UART has a 1024-byte receive buffer to accommodate radio/display activity.
+
+The TFT shows GPS NO DATA (no recent UART bytes), NO NMEA (bytes arriving but
+no recent valid navigation sentences), NO FIX (working GPS, no satellite fix),
+or FIX plus satellite count. Navigation data older than five seconds is stale;
+old coordinates are not logged as a live fix. Serial logs every two seconds
+include status, satellite count, parse errors, and coordinates/altitude when
+freshly fixed. Satellite count is the last parsed value. No raw NMEA flood.
+
+Upload `feather_esp32s3_tft` and test outdoors with the ceramic antenna facing
+upward. A UART-start message only confirms software initialization: valid NMEA
+confirms communication with the GPS. GPS reception and simultaneous ping/pong
+still need verification on hardware. No GPS data is added to PING/PONG yet.
+
+The Feather dashboard shows signed decimal LAT/LON to six decimal places below
+GPS status. Without a fresh fix, both show --. The compact radio rows preserve
+link status, counts, signal readings, last packet, gaps/errors, battery, and
+animation while making space for coordinates. Display precision is not GPS
+accuracy. The T-Beam screen layout is unchanged.

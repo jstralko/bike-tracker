@@ -22,14 +22,15 @@ struct LinkScreen {
     ++rx;
   }
 
-  void draw(Adafruit_GFX &g, const char *title, uint16_t ink) {
+  void draw(Adafruit_GFX &g, const char *title, uint16_t ink, bool compact = false) {
     const int w = g.width();
     const bool large = g.height() > 100;
-    const int scale = large ? 2 : 1;
+    const int scale = large && !compact ? 2 : 1;
     g.setTextWrap(false);
     g.setTextColor(ink);
-    g.setTextSize(scale);
+    g.setTextSize(large ? 2 : 1);
     g.setCursor(0, 0); g.print(title);
+    g.setTextSize(scale);
     const int y = large ? 23 : 12;
     g.drawFastHLine(0, y - 3, w, ink);
     // On the monochrome OLED, blink an inverted warning while the peer is silent.
@@ -49,7 +50,7 @@ struct LinkScreen {
     g.setCursor(0, y + 20 * scale + 10);
     g.print(packet.substring(0, w / 6));
     if (large) {
-      g.setCursor(0, 98);
+      g.setCursor(0, compact ? 64 : 98);
       g.printf("GAPS:%lu ERR:%lu LAST:", (unsigned long)silenceWindows,
                (unsigned long)misses);
       if (hasSignal) g.printf("%lus", (unsigned long)((millis()-lastPacket)/1000));

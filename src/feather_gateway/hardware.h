@@ -6,6 +6,7 @@
 #include <SPI.h>
 #include <math.h>
 #include "LinkScreen.h"
+#include "gps.h"
 
 namespace {
 Adafruit_ST7789 display(&SPI, TFT_CS, TFT_DC, TFT_RST);
@@ -54,7 +55,19 @@ void updateScreen() {
   previous = millis();
   if (!frame.getBuffer()) return;
   frame.fillScreen(0);
-  screen.draw(frame, "FEATHER / GATEWAY", screen.peerSilent ? ST77XX_ORANGE : ST77XX_CYAN);
+  screen.draw(frame, "FEATHER / GATEWAY", screen.peerSilent ? ST77XX_ORANGE : ST77XX_CYAN, true);
+  const bool freshFix = !strcmp(gpsStatus(), "FIX");
+  frame.setTextSize(1);
+  frame.setTextColor(freshFix ? ST77XX_GREEN : ST77XX_WHITE);
+  frame.setCursor(0, 76);
+  frame.printf("GPS %s | SAT:%u", gpsStatus(),
+               static_cast<unsigned int>(gps.satellites));
+  frame.setCursor(0, 86);
+  if (freshFix) frame.printf("LAT: %.6f", gps.latitudeDegrees);
+  else frame.print("LAT: --");
+  frame.setCursor(0, 96);
+  if (freshFix) frame.printf("LON: %.6f", gps.longitudeDegrees);
+  else frame.print("LON: --");
   const uint16_t batteryColor = batteryValid && batteryPercent < 20 ? ST77XX_RED : ST77XX_GREEN;
   frame.setTextSize(1);
   frame.setTextColor(batteryValid ? batteryColor : ST77XX_WHITE);

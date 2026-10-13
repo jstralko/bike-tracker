@@ -58,7 +58,7 @@ If no logs appear, check the selected serial port (`pio device list`), the data 
       successful replies resume without resetting the T-Beam.
 - [ ] Leave both running and confirm replies keep matching during the field test.
 
-This test includes live screen dashboards; GPS parsing remains disabled.
+This test includes live dashboards and Feather local GPS parsing; GPS is not added to packets.
 The Feather stage is selected in `platformio.ini`; T-Beam defaults to stage 3.
 
 ## Feather ESP32-S3 TFT — radio initialization
@@ -145,3 +145,11 @@ If a port exists but access is denied, inspect `ls -l /dev/ttyACM*` and `id` in 
 - [ ] With a LiPo connected, verify Feather battery percentage/voltage and icon.
 - [ ] Confirm battery readings refresh on battery power and ping/pong continues.
 - [ ] If LC709203F is detected, set its pack-size profile for the actual battery.
+
+## Feather GPS bring-up verification
+
+- [ ] Upload Feather and confirm GPS UART started at 9600 baud, RX=2/TX=1.
+- [ ] Confirm screen/serial changes from NO DATA to NO FIX or FIX with GPS wired.
+- [ ] Outdoors, confirm FIX, satellites, and plausible coordinates/altitude.
+- [ ] Disconnect GPS TX and confirm NO DATA after five seconds, with no live coordinates.
+- [ ] Reconnect GPS TX and confirm parsing recovers while ping/pong continues.
