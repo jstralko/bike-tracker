@@ -70,13 +70,28 @@ void pollRadio() {
   if (state == RADIOLIB_ERR_NONE) {
     linkProtocol::logReceived(radio, message);
     if (linkProtocol::isPing(message)) {
+      tbeamPosition = linkProtocol::GpsPayload{};
+      const int separator = message.indexOf('|');
+      tbeamPositionReceived = separator >= 0 && linkProtocol::parseGpsPong(
+          message.c_str(), message.substring(0, separator).c_str(), tbeamPosition);
+      tbeamPositionUpdated = millis();
       if (screen.peerSilent) Serial.println(F("T-Beam back: valid ping received"));
       lastValidPing = millis();
       countedSilenceWindows = 0;
       seenValidPing = true;
       screen.peerSilent = false;
       screen.received(message, radio.getRSSI(), radio.getSNR());
-      String pong = linkProtocol::pongFor(message);
+      pollGps();
+      if (tbeamDistanceAvailable()) Serial.printf("T-Beam approximately %.0f m away\n", distanceToTbeam());
+      linkProtocol::GpsPayload position;
+      const char *status = gpsStatus();
+      position.status = !strcmp(status, "FIX") ? 1 : (!strcmp(status, "NO FIX") ? 0 : 2);
+      position.satellites = position.status == 2 ? 0 : gps.satellites;
+      if (position.status == 1) {
+        position.latitude = gps.latitudeDegrees;
+        position.longitude = gps.longitudeDegrees;
+      }
+      String pong = linkProtocol::gpsPongFor(message, position);
       delay(linkProtocol::kReplyDelayMs);  // Give the T-Beam time to switch from TX to RX.
       state = radio.transmit(pong);
       if (state == RADIOLIB_ERR_NONE) {

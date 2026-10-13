@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <RadioLib.h>
+#include "GpsPayload.h"
 
 // One shared layer for the wire protocol and settings used by both radios.
 // Hardware construction, power, interrupts, and screen updates stay on each board.
@@ -19,14 +20,28 @@ constexpr uint32_t kPeerTimeoutMs = 6000;
 
 inline String ping(uint32_t sequence) { return "PING:" + String(sequence); }
 inline String pongFor(const String &pingMessage) {
-  return "PONG:" + pingMessage.substring(5);
+  const int separator = pingMessage.indexOf('|');
+  return "PONG:" + pingMessage.substring(5, separator < 0 ? pingMessage.length() : separator);
+}
+inline String withGps(const String &packet, const GpsPayload &gps) {
+  return packet + "|GPS:1," + String(gps.status) + "," +
+         String(gps.satellites) + "," + String(gps.latitude, 6) + "," +
+         String(gps.longitude, 6);
+}
+inline String gpsPongFor(const String &pingMessage, const GpsPayload &gps) {
+  return withGps(pongFor(pingMessage), gps);
 }
 inline bool isPing(const String &message) {
   if (!message.startsWith("PING:") || message.length() <= 5) return false;
-  for (unsigned int i = 5; i < message.length(); ++i) {
+  const int separator = message.indexOf('|');
+  const unsigned int end = separator < 0 ? message.length() : separator;
+  if (end <= 5) return false;
+  for (unsigned int i = 5; i < end; ++i) {
     if (message[i] < '0' || message[i] > '9') return false;
   }
-  return true;
+  if (separator < 0) return true;
+  GpsPayload position;
+  return parseGpsPong(message.c_str(), message.substring(0, end).c_str(), position);
 }
 
 template <typename Radio>

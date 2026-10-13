@@ -74,6 +74,10 @@ void enableRadioPower() {
   pmu.enableALDO1();
   pmu.setALDO3Voltage(3300);
   pmu.enableALDO3();
+#if TBEAM_TEST_STAGE >= 3
+  pmu.setALDO4Voltage(3300);
+  pmu.enableALDO4();
+#endif
   delay(100);
 }
 #endif
@@ -92,6 +96,9 @@ void setup() {
   Serial.println(F("AXP2101 ready; ALDO3 enabled"));
 #endif
   beginScreen();
+#if TBEAM_TEST_STAGE >= 3
+  beginLocalGps();
+#endif
 #if TBEAM_TEST_STAGE >= 2
   Serial.println(F("Initializing SX1262..."));
   radioSpi.begin(kRadioSck, kRadioMiso, kRadioMosi, kRadioCs);
@@ -108,8 +115,27 @@ void setup() {
 }
 
 void loop() {
+  pollLocalGps();
+  static uint32_t previousGpsLog = 0;
+  if (millis() - previousGpsLog >= 2000) {
+    previousGpsLog = millis();
+    Serial.printf("T-Beam GPS %s | satellites=%lu", localGpsStatus(), localGps.satellites.value());
+    if (proximityAvailable()) {
+      const double distance = featherDistance();
+      Serial.printf(" | Feather distance=%.1fm | %s", distance,
+                    distance <= linkProtocol::kCloseMeters ? "CLOSE" : "FAR");
+    }
+    Serial.println();
+  }
 #if TBEAM_TEST_STAGE >= 3
-  String ping = linkProtocol::ping(sequence++);
+  linkProtocol::GpsPayload ownPosition;
+  ownPosition.status = localGpsFresh() ? 1 : (!strcmp(localGpsStatus(), "NO DATA") ? 2 : 0);
+  ownPosition.satellites = ownPosition.status == 2 ? 0 : localGps.satellites.value();
+  if (ownPosition.status == 1) {
+    ownPosition.latitude = localGps.location.lat();
+    ownPosition.longitude = localGps.location.lng();
+  }
+  String ping = linkProtocol::withGps(linkProtocol::ping(sequence++), ownPosition);
   const String expectedReply = linkProtocol::pongFor(ping);
   static uint32_t matched = 0;
   static uint32_t timeouts = 0;
@@ -136,6 +162,7 @@ void loop() {
 
   const uint32_t deadline = millis() + linkProtocol::kPongTimeoutMs;
   while (!packetReceived && static_cast<int32_t>(deadline - millis()) > 0) {
+    pollLocalGps();
     updateScreen();
     delay(1);
   }
@@ -145,7 +172,14 @@ void loop() {
     state = radio.readData(reply);
     if (state == RADIOLIB_ERR_NONE) {
       linkProtocol::logReceived(radio, reply);
-      if (reply == expectedReply) {
+      linkProtocol::GpsPayload position;
+      if (linkProtocol::parseGpsPong(reply.c_str(), expectedReply.c_str(), position)) {
+        remoteGps = position;
+        remoteGpsReceived = true;
+        remoteGpsUpdated = millis();
+        Serial.printf("Feather GPS | status=%u satellites=%u", position.status, position.satellites);
+        if (position.status == 1) Serial.printf(" | lat=%.6f lon=%.6f", position.latitude, position.longitude);
+        Serial.println();
         if (screen.peerSilent) Serial.println(F("Feather back: matching pong received"));
         screen.peerSilent = false;
         screen.received(reply, radio.getRSSI(), radio.getSNR());

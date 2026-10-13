@@ -214,3 +214,59 @@ GPS status. Without a fresh fix, both show --. The compact radio rows preserve
 link status, counts, signal readings, last packet, gaps/errors, battery, and
 animation while making space for coordinates. Display precision is not GPS
 accuracy. The T-Beam screen layout is unchanged.
+
+## GPS in pong replies
+
+Upload **both boards** for the GPS payload protocol. T-Beam still sends PING:n;
+Feather returns PONG:n|GPS:1,status,satellites,latitude,longitude. Example:
+`PONG:42|GPS:1,1,5,37.123456,-122.123456`. The first 1 is protocol version;
+status is 0=no fix, 1=fresh fix, 2=unavailable/stale. Without a fresh fix,
+coordinates are zero placeholders and are not displayed as a position.
+Only the Feather GPS is sent; the T-Beam's own GPS is not initialized yet.
+
+T-Beam validates the exact sequence, version, fields, finite coordinates and
+geographic bounds before accepting the pong. It logs the remote GPS data and
+alternates its OLED between radio details and Feather coordinates every four
+seconds. No-fix or stale data displays GPS NO FIX/UNAVAILABLE. Coordinate display
+expires after six seconds without an accepted pong or when the link is silent.
+Feather's own screen retains its local coordinates and battery status.
+
+Native parser tests: `g++ -std=c++11 -Wall -Wextra -Werror -Iinclude tests/gps_payload_test.cpp -o /tmp/bike-gps-payload-test` then run the executable.
+
+## GPS proximity on the T-Beam
+
+T-Beam now powers its L76K via ALDO4, keeps GPIO7 high, and listens at 9600
+baud on RX=9/TX=8, following LilyGO's GPS example pin definitions. TinyGPSPlus
+parses continuously during reply waits and between pings. It does not wait for
+GPS fix at startup. The existing Feather GPS pong format stays unchanged.
+
+The OLED cycles radio, Feather coordinates, and proximity pages every four
+seconds. With fresh positions on both boards, haversine surface distance is
+shown in meters: CLOSE is <=20 m, FAR is >20 m. Without a fresh local fix,
+remote fix, or recent accepted pong, distance is --. Link silence overrides
+proximity availability. Local location age limit is five seconds; remote pong
+age limit is six seconds. GPS error may make CLOSE/FAR fluctuate near 20 m;
+this is approximate positioning, not precise ranging.
+
+Upload T-Beam and test both boards outdoors. Logs report T-Beam GPS status,
+satellite count, distance, and CLOSE/FAR. Threshold is kCloseMeters in
+include/GeoDistance.h. Native distance tests are in tests/geo_distance_test.cpp;
+this environment has no native C++ compiler, so those tests are not run here.
+
+## Finding the T-Beam from the Feather
+
+Both directions now include GPS status: T-Beam pings carry its position and
+Feather pongs carry the Feather's position. Upload both environments together.
+The Feather screen replaces local LAT/LON rows with a large approximate
+`~ 123 m away` (or km) estimate to the T-Beam, green within 20 m. Coordinates
+remain in logs. Fresh GPS fixes on both boards and a recent valid T-Beam ping
+are required. Missing data shows DISTANCE -- with a reason; radio silence
+hides the estimate. No direction or heading is inferred from distance.
+This measures straight-line surface distance, not walking-route distance.
+GPS error may cause small changes even when standing still.
+
+Wire formats share the GPS version-1 fields:
+`PING:n|GPS:1,status,satellites,latitude,longitude` and
+`PONG:n|GPS:1,status,satellites,latitude,longitude`.
+Only the sequence portion is echoed into the pong header. A legacy plain ping
+can still get a pong, but cannot provide a distance on the Feather.

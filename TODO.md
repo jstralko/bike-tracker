@@ -153,3 +153,27 @@ If a port exists but access is denied, inspect `ls -l /dev/ttyACM*` and `id` in 
 - [ ] Outdoors, confirm FIX, satellites, and plausible coordinates/altitude.
 - [ ] Disconnect GPS TX and confirm NO DATA after five seconds, with no live coordinates.
 - [ ] Reconnect GPS TX and confirm parsing recovers while ping/pong continues.
+
+## GPS pong verification
+
+- [ ] Upload both environments and verify matching sequence numbers with GPS payloads.
+- [ ] Compare T-Beam remote coordinates against the Feather's local display/logs.
+- [ ] Without GPS fix, confirm valid pongs still arrive with NO FIX status.
+- [ ] Disconnect GPS TX: confirm status becomes unavailable and old coordinates disappear.
+- [ ] Disconnect Feather: confirm T-Beam's silent warning and no stale coordinate display.
+
+## Coordinate proximity verification
+
+- [ ] Upload T-Beam and acquire its local fix outdoors; confirm RX=9/TX=8 logs.
+- [ ] With both fixes fresh, compare displayed distance to actual separation.
+- [ ] Walk beyond 20 m and confirm CLOSE changes to FAR (allow GPS error).
+- [ ] Remove either GPS fix or disconnect Feather and confirm distance becomes --.
+- [ ] Confirm proximity resumes after fresh fixes/pongs return.
+
+## Feather finder verification
+
+- [ ] Upload both boards and acquire both GPS fixes outdoors.
+- [ ] Confirm Feather shows an approximate distance rather than local coordinates.
+- [ ] Move toward/away from T-Beam and check the estimate broadly follows separation.
+- [ ] Remove T-Beam GPS fix or disconnect radio and confirm distance becomes unavailable.
+- [ ] Confirm matching pongs, battery display, and silence indicators still work.
