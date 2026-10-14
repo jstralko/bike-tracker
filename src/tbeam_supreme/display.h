@@ -22,12 +22,53 @@ double featherDistance() {
   return linkProtocol::distanceMeters(localGps.location.lat(), localGps.location.lng(),
                                       remoteGps.latitude, remoteGps.longitude);
 }
+void drawDashboard() {
+  display.setTextWrap(false);
+  display.setTextColor(SH110X_WHITE);
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.print("T-BEAM");
+  // Radio bars and a local GPS target stay visible across all three pages.
+  const bool radioLive = screen.hasSignal && !screen.peerSilent &&
+                         millis() - screen.lastPacket <= boardConfig::kRemotePositionStaleMs &&
+                         screen.status.indexOf("ERROR") < 0;
+  const int bars = radioLive ? constrain((int)((screen.rssi + 120) / 12), 1, 4) : 0;
+  for (int i = 0; i < 4; ++i) {
+    const int height = 2 + i * 2;
+    if (i < bars) display.fillRect(94 + i * 4, 8 - height, 3, height, SH110X_WHITE);
+    else display.drawRect(94 + i * 4, 8 - height, 3, height, SH110X_WHITE);
+  }
+  display.drawCircle(120, 4, 3, SH110X_WHITE);
+  display.drawFastHLine(115, 4, 11, SH110X_WHITE);
+  display.drawFastVLine(120, 0, 9, SH110X_WHITE);
+  if (localGpsFresh()) display.fillCircle(120, 4, 1, SH110X_WHITE);
+  else display.drawLine(116, 0, 124, 8, SH110X_WHITE);
+  display.drawFastHLine(0, 9, 128, SH110X_WHITE);
+  const bool invertWarning = screen.peerSilent && (millis() / 500) % 2 == 0;
+  if (invertWarning) {
+    display.fillRect(0, 11, 128, 10, SH110X_WHITE);
+    display.setTextColor(SH110X_BLACK);
+  }
+  display.setCursor(0, 12);
+  display.print(screen.status.substring(0, 19));
+  display.setTextColor(SH110X_WHITE);
+  display.setCursor(0, 32);
+  if (screen.hasSignal) display.printf("RSSI %.0f dBm SNR %.1f", screen.rssi, screen.snr);
+  else display.print("915 MHz | waiting");
+  display.setCursor(0, 42);
+  display.print(screen.packet.substring(0, 21));
+  // Keep the link's moving packet dot, with signal bars now in the header.
+  display.drawCircle(4, 58, 3, SH110X_WHITE);
+  display.drawCircle(124, 58, 3, SH110X_WHITE);
+  display.drawFastHLine(8, 58, 112, SH110X_WHITE);
+  if (!screen.peerSilent) display.fillCircle(8 + (millis() / 45) % 112, 58, 2, SH110X_WHITE);
+}
 void updateScreen() {
   static uint32_t previous = 0;
   if (!displayReady || millis() - previous < boardConfig::kScreenRefreshMs) return;
   previous = millis();
   display.clearDisplay();
-  screen.draw(display, "T-BEAM / TRACKER", SH110X_WHITE);
+  drawDashboard();
   // Cycle radio, remote coordinates, and proximity pages.
   const unsigned int page = (millis() / boardConfig::kScreenPageMs) % 3;
   if (page == 1) {
