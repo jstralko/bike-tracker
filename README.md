@@ -270,3 +270,26 @@ Wire formats share the GPS version-1 fields:
 `PONG:n|GPS:1,status,satellites,latitude,longitude`.
 Only the sequence portion is echoed into the pong header. A legacy plain ping
 can still get a pong, but cannot provide a distance on the Feather.
+
+## Feather phone-style finder screen
+
+The Feather's screen now focuses on finding the T-Beam: a large approximate
+distance and a north-up compass arrow with cardinal bearing. The top-right
+status bar contains local GPS, radio-link bars, and a battery icon/percentage.
+GPS is green with a fresh local fix; orange otherwise. Radio bars clear when
+traffic is stale/silent and turn red on a radio error. Battery is red below 20%.
+RSSI/SNR, packet counts, voltage, and GPS coordinates remain available in serial
+logs rather than occupying the finder screen.
+
+The arrow is a geographic bearing (0=N, 90=E), not relative to how the device
+is held. There is no magnetometer/heading sensor on this Feather setup. Align
+the screen's north with real north to use the arrow. At separations under 10 m,
+direction is suppressed in favor of NEARBY to avoid unstable GPS bearings.
+Missing/stale fixes show --, with the reason in the footer. Within 20 m the
+valid distance turns green. Hardware layout/bearing verification remains pending.
+
+The Feather shows a five-second BIKE FINDER startup animation with a radar
+sweep, expanding pulse, blinking target, and progress bar before opening the
+finder screen. Animation begins on the first rendered frame after hardware
+setup; GPS parsing, battery polling, and radio replies continue in the loop.
+The progress bar represents splash time, not GPS-fix or hardware readiness.

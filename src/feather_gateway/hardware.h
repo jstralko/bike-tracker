@@ -34,6 +34,37 @@ enum class BatteryGauge { None, Max, Lc };
 BatteryGauge batteryGauge = BatteryGauge::None;
 bool batteryValid = false;
 float batteryPercent = 0, batteryVoltage = 0;
+constexpr uint32_t kBootAnimationMs = 5000;
+uint32_t bootAnimationStarted = 0;
+bool bootAnimationPending = true;
+
+void drawBootAnimation(uint32_t elapsed) {
+  frame.fillScreen(ST77XX_BLACK);
+  frame.setTextWrap(false);
+  frame.setTextSize(2);
+  frame.setTextColor(ST77XX_WHITE);
+  frame.setCursor(54, 12);
+  frame.print("BIKE FINDER");
+  constexpr int cx = 120, cy = 65;
+  frame.drawCircle(cx, cy, 25, 0x2104);
+  frame.drawCircle(cx, cy, 13, 0x2104);
+  frame.drawFastHLine(cx - 25, cy, 51, 0x2104);
+  frame.drawFastVLine(cx, cy - 25, 51, 0x2104);
+  const double angle = elapsed * 0.004;
+  frame.drawLine(cx, cy, cx + (int)(sin(angle) * 24),
+                 cy - (int)(cos(angle) * 24), ST77XX_CYAN);
+  frame.drawCircle(cx, cy, 2 + (elapsed / 80) % 23, 0x0410);
+  frame.fillCircle(cx + 12, cy - 15, (elapsed / 300) % 2 ? 3 : 2, ST77XX_GREEN);
+  frame.fillCircle(cx, cy, 3, ST77XX_CYAN);
+  frame.setTextSize(1);
+  frame.setTextColor(0xC618);
+  frame.setCursor(57, 101);
+  frame.print("Starting your finder");
+  for (unsigned int i = 0; i < (elapsed / 400) % 4; ++i) frame.print('.');
+  frame.drawRoundRect(20, 119, 200, 7, 3, 0x2104);
+  const int progress = (196UL * elapsed) / kBootAnimationMs;
+  if (progress > 0) frame.fillRect(22, 121, progress, 3, ST77XX_CYAN);
+}
 
 void beginBattery() {
   Wire.begin(SDA, SCL);
@@ -65,42 +96,120 @@ void updateBattery() {
                  batteryVoltage >= 2.5f && batteryVoltage <= 4.5f && percent >= 0;
   if (batteryValid) batteryPercent = constrain(percent, 0.0f, 100.0f);
 }
+void drawStatusBar() {
+  const uint16_t muted = 0x8410;
+  const bool fix = !strcmp(gpsStatus(), "FIX");
+  const bool radioError = screen.status.indexOf("ERROR") >= 0;
+  const bool radioLive = screen.hasSignal && !screen.peerSilent &&
+                         millis() - screen.lastPacket <= 6000 && !radioError;
+  frame.fillRect(0, 0, 240, 23, 0x1082);
+  frame.setTextSize(1);
+  frame.setTextColor(ST77XX_WHITE);
+  frame.setCursor(8, 8);
+  frame.print("FIND T-BEAM");
+  // GPS target icon, radio bars, and battery form the top-right status cluster.
+  const uint16_t gpsColor = fix ? ST77XX_GREEN : ST77XX_ORANGE;
+  frame.drawCircle(125, 10, 4, gpsColor);
+  frame.drawFastHLine(118, 10, 15, gpsColor);
+  frame.drawFastVLine(125, 3, 15, gpsColor);
+  frame.setTextColor(gpsColor);
+  frame.setCursor(137, 7); frame.print("GPS");
+  const uint16_t radioColor = radioLive ? ST77XX_CYAN : (radioError ? ST77XX_RED : muted);
+  const int bars = radioLive ? constrain((int)((screen.rssi + 120) / 12), 1, 4) : 0;
+  for (int i = 0; i < 4; ++i) {
+    const int height = 3 + i * 3;
+    if (i < bars) frame.fillRect(160 + i * 4, 17 - height, 3, height, radioColor);
+    else frame.drawRect(160 + i * 4, 17 - height, 3, height, radioColor);
+  }
+  const uint16_t batteryColor = !batteryValid ? muted :
+      (batteryPercent < 20 ? ST77XX_RED : ST77XX_GREEN);
+  frame.drawRect(182, 5, 20, 11, batteryColor);
+  frame.fillRect(202, 8, 2, 5, batteryColor);
+  if (batteryValid) frame.fillRect(184, 7, (int)(16 * batteryPercent / 100), 7, batteryColor);
+  frame.setTextColor(batteryColor);
+  frame.setCursor(209, 7);
+  if (batteryValid) frame.printf("%.0f%%", batteryPercent);
+  else frame.print("--");
+}
+
+void drawCompass(bool available, double bearing, uint16_t ink) {
+  constexpr int cx = 191, cy = 77, radius = 29;
+  frame.drawCircle(cx, cy, radius, 0x8410);
+  frame.setTextSize(1);
+  frame.setTextColor(ST77XX_WHITE);
+  frame.setCursor(cx - 2, cy - radius - 11); frame.print("N");
+  frame.setCursor(cx - 2, cy + radius + 4); frame.print("S");
+  frame.setCursor(cx - radius - 10, cy - 3); frame.print("W");
+  frame.setCursor(cx + radius + 5, cy - 3); frame.print("E");
+  if (!available) {
+    frame.setCursor(cx - 2, cy - 3); frame.print("?");
+    return;
+  }
+  const double angle = bearing * 0.017453292519943295;
+  const double dx = sin(angle), dy = -cos(angle);
+  frame.drawLine(cx - (int)(dx * 16), cy - (int)(dy * 16),
+                 cx + (int)(dx * 18), cy + (int)(dy * 18), ink);
+  frame.fillTriangle(cx + (int)(dx * 23), cy + (int)(dy * 23),
+                     cx + (int)(dx * 10 - dy * 7), cy + (int)(dy * 10 + dx * 7),
+                     cx + (int)(dx * 10 + dy * 7), cy + (int)(dy * 10 - dx * 7), ink);
+  frame.fillCircle(cx, cy, 2, ink);
+}
+
 void updateScreen() {
   static uint32_t previous = 0;
   if (millis() - previous < 120) return;
   previous = millis();
   if (!frame.getBuffer()) return;
-  frame.fillScreen(0);
-  screen.draw(frame, "FEATHER / FINDER", screen.peerSilent ? ST77XX_ORANGE : ST77XX_CYAN, true);
-  const bool freshFix = !strcmp(gpsStatus(), "FIX");
-  frame.setTextSize(1);
-  frame.setTextColor(freshFix ? ST77XX_GREEN : ST77XX_WHITE);
-  frame.setCursor(0, 76);
-  frame.printf("GPS %s | SAT:%u", gpsStatus(),
-               static_cast<unsigned int>(gps.satellites));
-  frame.setCursor(0, 86);
-  if (tbeamDistanceAvailable()) {
-    const double distance = distanceToTbeam();
-    frame.setTextColor(distance <= linkProtocol::kCloseMeters ? ST77XX_GREEN : ST77XX_CYAN);
-    frame.setTextSize(2);
-    if (distance < 1000) frame.printf("~ %.0f m away", distance);
-    else frame.printf("~ %.1f km away", distance / 1000);
-  } else {
-    frame.print("DISTANCE --");
-    frame.setCursor(0, 96);
-    if (screen.peerSilent) frame.print("T-Beam signal lost");
-    else if (!freshFix) frame.print("Waiting for your GPS fix");
-    else frame.print("Waiting for T-Beam GPS fix");
+  if (bootAnimationPending) {
+    bootAnimationStarted = millis();
+    bootAnimationPending = false;
   }
-  const uint16_t batteryColor = batteryValid && batteryPercent < 20 ? ST77XX_RED : ST77XX_GREEN;
+  const uint32_t bootElapsed = millis() - bootAnimationStarted;
+  if (bootElapsed < kBootAnimationMs) {
+    drawBootAnimation(bootElapsed);
+    display.drawRGBBitmap(0, 0, frame.getBuffer(), 240, 135);
+    return;
+  }
+  frame.fillScreen(ST77XX_BLACK);
+  frame.setTextWrap(false);
+  drawStatusBar();
+  const bool available = tbeamDistanceAvailable();
+  const double distance = available ? distanceToTbeam() : 0;
+  // GPS error makes bearings unstable at very short separations.
+  const bool directionAvailable = available && distance >= 10;
+  const double bearing = directionAvailable ? linkProtocol::bearingDegrees(
+      gps.latitudeDegrees, gps.longitudeDegrees,
+      tbeamPosition.latitude, tbeamPosition.longitude) : 0;
+  const uint16_t ink = available && distance <= linkProtocol::kCloseMeters ? ST77XX_GREEN : ST77XX_CYAN;
   frame.setTextSize(1);
-  frame.setTextColor(batteryValid ? batteryColor : ST77XX_WHITE);
-  frame.setCursor(0, 110);
-  if (batteryValid) frame.printf("BAT %.0f%%  %.2fV", batteryPercent, batteryVoltage);
-  else frame.print("BAT -- (unavailable)");
-  frame.drawRect(207, 110, 28, 9, batteryColor);
-  frame.fillRect(235, 112, 2, 5, batteryColor);
-  if (batteryValid) frame.fillRect(209, 112, (int)(24 * batteryPercent / 100), 5, batteryColor);
+  frame.setTextColor(0xC618);
+  frame.setCursor(10, 31); frame.print("APPROX. DISTANCE");
+  frame.setTextSize(3);
+  frame.setTextColor(available ? ink : ST77XX_ORANGE);
+  frame.setCursor(10, 46);
+  if (!available) frame.print("--");
+  else {
+    char distanceText[24];
+    if (distance < 1000) snprintf(distanceText, sizeof(distanceText), "%.0f m", distance);
+    else snprintf(distanceText, sizeof(distanceText), "%.1f km", distance / 1000);
+    if (strlen(distanceText) > 8) frame.setTextSize(2);
+    frame.print(distanceText);
+  }
+  frame.setTextSize(2);
+  frame.setCursor(10, 83);
+  if (directionAvailable) frame.printf("%s %.0f", linkProtocol::compassDirection(bearing), bearing);
+  else if (available) frame.print("NEARBY");
+  else frame.print("WAITING");
+  drawCompass(directionAvailable, bearing, ink);
+  frame.setTextSize(1);
+  frame.setTextColor(0xC618);
+  frame.setCursor(10, 123);
+  if (screen.status.indexOf("ERROR") >= 0) frame.print(screen.status.substring(0, 36));
+  else if (screen.peerSilent) frame.print("T-Beam signal lost");
+  else if (!strcmp(gpsStatus(), "FIX") && !available) frame.print("Waiting for T-Beam GPS");
+  else if (!available) frame.print("Waiting for your GPS fix");
+  else if (!directionAvailable) frame.print("Nearby - look around");
+  else frame.print("NORTH-UP | bearing to T-Beam");
   display.drawRGBBitmap(0, 0, frame.getBuffer(), 240, 135);
 }
 void beginScreen() {
