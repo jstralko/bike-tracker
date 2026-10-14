@@ -11,6 +11,7 @@ namespace {
 Adafruit_SH1106G display(128, 64, &Wire, -1);
 LinkScreen screen;
 bool displayReady = false;
+uint32_t bootScreenStarted = 0;
 linkProtocol::GpsPayload remoteGps;
 bool remoteGpsReceived = false;
 uint32_t remoteGpsUpdated = 0;
@@ -21,6 +22,30 @@ bool proximityAvailable() {
 double featherDistance() {
   return linkProtocol::distanceMeters(localGps.location.lat(), localGps.location.lng(),
                                       remoteGps.latitude, remoteGps.longitude);
+}
+void drawBootScreen(uint32_t elapsed) {
+  display.setTextWrap(false);
+  display.setTextColor(SH110X_WHITE);
+  // Expanding radio waves above a small tracker antenna.
+  display.drawFastVLine(64, 17, 10, SH110X_WHITE);
+  display.fillCircle(64, 17, 2, SH110X_WHITE);
+  const int wave = (elapsed / 150) % 3;
+  for (int i = 0; i <= wave; ++i) {
+    const int offset = 6 + i * 5;
+    display.drawLine(64 - offset, 13 - i, 62 - offset, 17, SH110X_WHITE);
+    display.drawLine(62 - offset, 17, 64 - offset, 21 + i, SH110X_WHITE);
+    display.drawLine(64 + offset, 13 - i, 66 + offset, 17, SH110X_WHITE);
+    display.drawLine(66 + offset, 17, 64 + offset, 21 + i, SH110X_WHITE);
+  }
+  display.setTextSize(2);
+  display.setCursor(28, 31);
+  display.print("T-BEAM");
+  display.setTextSize(1);
+  display.setCursor(31, 49);
+  display.print("BIKE TRACKER");
+  // Progress shows splash duration while setup and the radio loop continue.
+  display.drawRect(14, 59, 100, 5, SH110X_WHITE);
+  display.fillRect(16, 61, elapsed * 96 / boardConfig::kBootScreenMs, 1, SH110X_WHITE);
 }
 void drawDashboard() {
   display.setTextWrap(false);
@@ -68,6 +93,12 @@ void updateScreen() {
   if (!displayReady || millis() - previous < boardConfig::kScreenRefreshMs) return;
   previous = millis();
   display.clearDisplay();
+  const uint32_t bootElapsed = millis() - bootScreenStarted;
+  if (bootElapsed < boardConfig::kBootScreenMs && screen.status.indexOf("ERROR") < 0) {
+    drawBootScreen(bootElapsed);
+    display.display();
+    return;
+  }
   drawDashboard();
   // Cycle radio, remote coordinates, and proximity pages.
   const unsigned int page = (millis() / boardConfig::kScreenPageMs) % 3;
@@ -128,6 +159,7 @@ void beginScreen() {
     }
   }
   if (!displayReady) Serial.println(F("OLED unavailable; serial logging continues"));
+  bootScreenStarted = millis();
   updateScreen();
 }
 }  // namespace

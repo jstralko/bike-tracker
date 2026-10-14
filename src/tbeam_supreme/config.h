@@ -32,5 +32,6 @@ constexpr int kGpsWake = 7;
 constexpr uint32_t kGpsStaleMs = 5000;
 constexpr uint32_t kRemotePositionStaleMs = 6000;
 constexpr uint32_t kScreenRefreshMs = 150;
+constexpr uint32_t kBootScreenMs = 3000;
 constexpr uint32_t kScreenPageMs = 4000;
 }  // namespace boardConfig
