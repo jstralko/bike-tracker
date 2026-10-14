@@ -1,4 +1,5 @@
 #pragma once
+#include "config.h"
 #include <Wire.h>
 #include <Adafruit_SH110X.h>
 #include "LinkScreen.h"
@@ -15,7 +16,7 @@ bool remoteGpsReceived = false;
 uint32_t remoteGpsUpdated = 0;
 bool proximityAvailable() {
   return localGpsFresh() && remoteGpsReceived && remoteGps.status == 1 &&
-         !screen.peerSilent && millis() - remoteGpsUpdated <= 6000;
+         !screen.peerSilent && millis() - remoteGpsUpdated <= boardConfig::kRemotePositionStaleMs;
 }
 double featherDistance() {
   return linkProtocol::distanceMeters(localGps.location.lat(), localGps.location.lng(),
@@ -23,19 +24,19 @@ double featherDistance() {
 }
 void updateScreen() {
   static uint32_t previous = 0;
-  if (!displayReady || millis() - previous < 150) return;
+  if (!displayReady || millis() - previous < boardConfig::kScreenRefreshMs) return;
   previous = millis();
   display.clearDisplay();
   screen.draw(display, "T-BEAM / TRACKER", SH110X_WHITE);
   // Cycle radio, remote coordinates, and proximity pages.
-  const unsigned int page = (millis() / 4000) % 3;
+  const unsigned int page = (millis() / boardConfig::kScreenPageMs) % 3;
   if (page == 1) {
     display.fillRect(0, 32, 128, 20, SH110X_BLACK);
     display.setTextSize(1);
     display.setTextColor(SH110X_WHITE);
     display.setCursor(0, 32);
     const bool fresh = remoteGpsReceived && !screen.peerSilent &&
-                       millis() - remoteGpsUpdated <= 6000;
+                       millis() - remoteGpsUpdated <= boardConfig::kRemotePositionStaleMs;
     if (fresh && remoteGps.status == 1) {
       display.printf("LAT %.6f", remoteGps.latitude);
       display.setCursor(0, 42);
@@ -75,7 +76,7 @@ void screenDelay(uint32_t duration) {
   }
 }
 void beginScreen() {
-  Wire.begin(17, 18);
+  Wire.begin(boardConfig::kDisplaySda, boardConfig::kDisplayScl);
   Wire.setClock(400000);
   // Prefer 0x3D on newer boards; 0x3C may be the magnetometer.
   for (uint8_t address : {uint8_t(0x3D), uint8_t(0x3C)}) {

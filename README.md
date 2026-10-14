@@ -76,7 +76,7 @@ RX/TX failures are logged and the Feather attempts to resume listening.
 
 To repeat earlier tests, set `FEATHER_TEST_STAGE=0` (serial) or `1` (radio
 standby) in `platformio.ini`, and `TBEAM_TEST_STAGE=0`, `1`, or `2` in the
-T-Beam source. See [the checklist](TODO.md).
+`src/tbeam_supreme/config.h`. See [the checklist](TODO.md).
 
 ### T-Beam and original Feather M0 gateway
 
@@ -180,7 +180,10 @@ src/feather_gateway/hardware.h for your battery capacity if this older gauge is 
 
 ## Firmware organization
 
-Each board's `main.cpp` owns setup and its ping/pong flow. One shared helper
+Each board's `main.cpp` contains only Arduino `setup()` and `loop()`, which call
+its `app.h` interface. `app.cpp` owns hardware initialization and ping/pong flow.
+Board pin assignments, stage switches, and hardware timing settings live in
+that board's `config.h`. One shared helper
 layer in `include/LinkProtocol.h` defines radio settings, packet construction,
 validation, timing constants, and received-packet logging; there is no driver
 wrapper or inheritance hierarchy. `include/LinkScreen.h` renders the shared
@@ -293,3 +296,9 @@ sweep, expanding pulse, blinking target, and progress bar before opening the
 finder screen. Animation begins on the first rendered frame after hardware
 setup; GPS parsing, battery polling, and radio replies continue in the loop.
 The progress bar represents splash time, not GPS-fix or hardware readiness.
+
+A human-readable Radio label appears directly below the Feather distance:
+STRONG (RSSI >= -80 dBm), GOOD (>= -100), FAIR (>= -115), otherwise POOR.
+These are approximate strength categories for the last valid ping, not delivery
+guarantees. WAITING means no packet yet; LOST means stale/silent traffic; ERROR
+means radio setup/reception failure. Thresholds are in Feather config.h.

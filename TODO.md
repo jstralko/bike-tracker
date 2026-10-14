@@ -2,7 +2,7 @@
 
 For the Feather ESP32-S3 TFT main board, use the separate checklist below. The `feather_m0` environment is the original gateway and is not the correct upload target for your ESP32-S3.
 
-Change `TBEAM_TEST_STAGE` near the top of `src/tbeam_supreme/main.cpp`, then rebuild and upload after each change. Inactive hardware code is excluded by `#if` blocks, preserving it for later tests. The current default is stage **3** after successful power and radio bring-up.
+Change `TBEAM_TEST_STAGE` in `src/tbeam_supreme/config.h`, then rebuild and upload after each change. Inactive hardware code is excluded by `#if` blocks, preserving it for later tests. The current default is stage **3** after successful power and radio bring-up.
 
 ## 0 — Serial logging only
 

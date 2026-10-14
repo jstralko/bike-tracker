@@ -1,18 +1,16 @@
 #pragma once
 #include <Adafruit_GPS.h>
+#include "config.h"
 
 namespace {
 // GPS TX -> Feather RX/GPIO2; GPS RX -> Feather TX/GPIO1.
-constexpr int kGpsRx = 2;
-constexpr int kGpsTx = 1;
-constexpr uint32_t kGpsStaleMs = 5000;
 Adafruit_GPS gps(&Serial1);
 uint32_t gpsLastByte = 0, gpsLastNavigation = 0, gpsParseErrors = 0;
 bool gpsHasBytes = false, gpsHasNavigation = false;
 
 void beginGps() {
   Serial1.setRxBufferSize(1024);
-  Serial1.setPins(kGpsRx, kGpsTx);
+  Serial1.setPins(boardConfig::kGpsRx, boardConfig::kGpsTx);
   gps.begin(9600);
   gps.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
   gps.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);
@@ -20,8 +18,8 @@ void beginGps() {
 }
 
 const char *gpsStatus() {
-  if (!gpsHasBytes || millis() - gpsLastByte > kGpsStaleMs) return "NO DATA";
-  if (!gpsHasNavigation || millis() - gpsLastNavigation > kGpsStaleMs) return "NO NMEA";
+  if (!gpsHasBytes || millis() - gpsLastByte > boardConfig::kGpsStaleMs) return "NO DATA";
+  if (!gpsHasNavigation || millis() - gpsLastNavigation > boardConfig::kGpsStaleMs) return "NO NMEA";
   return gps.fix ? "FIX" : "NO FIX";
 }
 

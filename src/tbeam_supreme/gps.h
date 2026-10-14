@@ -1,5 +1,6 @@
 #pragma once
 #include <TinyGPS++.h>
+#include "config.h"
 
 namespace {
 TinyGPSPlus localGps;
@@ -9,10 +10,10 @@ bool localGpsHasBytes = false;
 
 void beginLocalGps() {
   // LilyGO L76K: ALDO4 powered by setup; GPIO7 high keeps GNSS awake.
-  pinMode(7, OUTPUT);
-  digitalWrite(7, HIGH);
+  pinMode(boardConfig::kGpsWake, OUTPUT);
+  digitalWrite(boardConfig::kGpsWake, HIGH);
   Serial1.setRxBufferSize(1024);
-  Serial1.begin(9600, SERIAL_8N1, 9, 8);
+  Serial1.begin(9600, SERIAL_8N1, boardConfig::kGpsRx, boardConfig::kGpsTx);
   localGpsStarted = true;
   Serial.println(F("T-Beam GPS UART started: 9600 baud | RX=9 TX=8"));
 }
@@ -27,11 +28,11 @@ void pollLocalGps() {
 }
 
 bool localGpsFresh() {
-  return localGpsStarted && localGps.location.isValid() && localGps.location.age() <= 5000;
+  return localGpsStarted && localGps.location.isValid() && localGps.location.age() <= boardConfig::kGpsStaleMs;
 }
 
 const char *localGpsStatus() {
-  if (!localGpsHasBytes || millis() - localGpsLastByte > 5000) return "NO DATA";
+  if (!localGpsHasBytes || millis() - localGpsLastByte > boardConfig::kGpsStaleMs) return "NO DATA";
   return localGpsFresh() ? "FIX" : "NO FIX";
 }
 }  // namespace

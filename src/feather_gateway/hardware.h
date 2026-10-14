@@ -1,4 +1,5 @@
 #pragma once
+#include "config.h"
 #include <Adafruit_ST7789.h>
 #include <Adafruit_MAX1704X.h>
 #include <Adafruit_LC709203F.h>
@@ -21,7 +22,7 @@ uint32_t tbeamPositionUpdated = 0;
 bool tbeamDistanceAvailable() {
   return !strcmp(gpsStatus(), "FIX") && tbeamPositionReceived &&
          tbeamPosition.status == 1 && !screen.peerSilent &&
-         millis() - tbeamPositionUpdated <= 6000;
+         millis() - tbeamPositionUpdated <= boardConfig::kRemotePositionStaleMs;
 }
 
 double distanceToTbeam() {
@@ -34,7 +35,6 @@ enum class BatteryGauge { None, Max, Lc };
 BatteryGauge batteryGauge = BatteryGauge::None;
 bool batteryValid = false;
 float batteryPercent = 0, batteryVoltage = 0;
-constexpr uint32_t kBootAnimationMs = 5000;
 uint32_t bootAnimationStarted = 0;
 bool bootAnimationPending = true;
 
@@ -62,7 +62,7 @@ void drawBootAnimation(uint32_t elapsed) {
   frame.print("Starting your finder");
   for (unsigned int i = 0; i < (elapsed / 400) % 4; ++i) frame.print('.');
   frame.drawRoundRect(20, 119, 200, 7, 3, 0x2104);
-  const int progress = (196UL * elapsed) / kBootAnimationMs;
+  const int progress = (196UL * elapsed) / boardConfig::kBootAnimationMs;
   if (progress > 0) frame.fillRect(22, 121, progress, 3, ST77XX_CYAN);
 }
 
@@ -86,7 +86,7 @@ void beginBattery() {
 void updateBattery() {
   static uint32_t previous = 0;
   static bool sampled = false;
-  if (sampled && millis() - previous < 5000) return;
+  if (sampled && millis() - previous < boardConfig::kBatteryRefreshMs) return;
   sampled = true;
   previous = millis();
   if (batteryGauge == BatteryGauge::None) return;
@@ -101,7 +101,7 @@ void drawStatusBar() {
   const bool fix = !strcmp(gpsStatus(), "FIX");
   const bool radioError = screen.status.indexOf("ERROR") >= 0;
   const bool radioLive = screen.hasSignal && !screen.peerSilent &&
-                         millis() - screen.lastPacket <= 6000 && !radioError;
+                         millis() - screen.lastPacket <= boardConfig::kRemotePositionStaleMs && !radioError;
   frame.fillRect(0, 0, 240, 23, 0x1082);
   frame.setTextSize(1);
   frame.setTextColor(ST77XX_WHITE);
@@ -155,9 +155,20 @@ void drawCompass(bool available, double bearing, uint16_t ink) {
   frame.fillCircle(cx, cy, 2, ink);
 }
 
+const char *radioStrengthLabel() {
+  if (screen.status.indexOf("ERROR") >= 0) return "ERROR";
+  if (screen.peerSilent) return "LOST";
+  if (!screen.hasSignal) return "WAITING";
+  if (millis() - screen.lastPacket > boardConfig::kRemotePositionStaleMs) return "LOST";
+  if (screen.rssi >= boardConfig::kStrongRssiDbm) return "STRONG";
+  if (screen.rssi >= boardConfig::kGoodRssiDbm) return "GOOD";
+  if (screen.rssi >= boardConfig::kFairRssiDbm) return "FAIR";
+  return "POOR";
+}
+
 void updateScreen() {
   static uint32_t previous = 0;
-  if (millis() - previous < 120) return;
+  if (millis() - previous < boardConfig::kScreenRefreshMs) return;
   previous = millis();
   if (!frame.getBuffer()) return;
   if (bootAnimationPending) {
@@ -165,7 +176,7 @@ void updateScreen() {
     bootAnimationPending = false;
   }
   const uint32_t bootElapsed = millis() - bootAnimationStarted;
-  if (bootElapsed < kBootAnimationMs) {
+  if (bootElapsed < boardConfig::kBootAnimationMs) {
     drawBootAnimation(bootElapsed);
     display.drawRGBBitmap(0, 0, frame.getBuffer(), 240, 135);
     return;
@@ -195,6 +206,14 @@ void updateScreen() {
     if (strlen(distanceText) > 8) frame.setTextSize(2);
     frame.print(distanceText);
   }
+  const char *radioStrength = radioStrengthLabel();
+  frame.setTextSize(1);
+  const bool strong = !strcmp(radioStrength, "STRONG") || !strcmp(radioStrength, "GOOD");
+  const bool lost = !strcmp(radioStrength, "LOST") || !strcmp(radioStrength, "ERROR");
+  frame.setTextColor(strong ? ST77XX_GREEN : (lost ? ST77XX_RED : ST77XX_ORANGE));
+  frame.setCursor(10, 105);
+  frame.printf("Radio: %s", radioStrength);
+  frame.setTextColor(available ? ink : ST77XX_ORANGE);
   frame.setTextSize(2);
   frame.setCursor(10, 83);
   if (directionAvailable) frame.printf("%s %.0f", linkProtocol::compassDirection(bearing), bearing);
